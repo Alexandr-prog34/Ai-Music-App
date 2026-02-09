@@ -9,6 +9,7 @@
 
 ---
 
+```
 project-root/
 ├── README.md
 ├── .gitignore
@@ -75,3 +76,4 @@ project-root/
 │
 └── .github/
     └── workflows/                # CI/CD
+```
