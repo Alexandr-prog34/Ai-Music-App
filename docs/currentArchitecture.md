@@ -1,8 +1,3 @@
-# Project Name
-
-Мобильное приложение для генерации музыки.
-Стек: **Flutter (mobile) + Go API + Go Worker + Redis + Postgres + S3**.
-
 Проект сделан как **монорепозиторий**, чтобы:
 
 * backend и mobile развивались синхронно
@@ -31,7 +26,6 @@ apps/mobile_flutter/
 
 Здесь живёт Flutter-клиент.
 
-`.gitkeep` заглушка (удалить после)
 
 ---
 

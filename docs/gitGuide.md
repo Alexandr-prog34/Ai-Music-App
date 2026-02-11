@@ -9,11 +9,12 @@
 
 ### dev
 Общая рабочая ветка.  
-Сюда сливаются все фичи.
+Сюда сливаются все фичи.  
 Напрямую не пушим.
 
-### feature/*-*
+### feature/*
 Отдельная ветка под каждую задачу.  
+Создается от dev.  
 Примеры:
 - feature/front-login
 - feature/back-auth
@@ -36,14 +37,11 @@
 git checkout dev
 git pull origin dev
 git checkout -b feature/my-task
-````
+```
 
 ---
 
 ## 2. Делать коммиты
-
-Коммить как удобно:
-
 ```
 git add .
 git commit -m "short message"
@@ -55,7 +53,7 @@ git commit -m "short message"
 
 Запушить ветку на сервер:
 
-```bash
+```
 git push -u origin feature/my-task
 ```
 
@@ -65,12 +63,12 @@ git push -u origin feature/my-task
 
 Если ты начал утром, а днём кто-то влил новое в `dev`, тебе нужно подтянуть `dev` в свою ветку:
 
-1. Сохрани изменения (закоммить или stash)
+1. Сохрани изменения (закоммить)
 
 ```
 git status
 git add .
-git commit -m "wip"
+git commit -m "short message"
 ```
 
 2. Обнови `dev`
@@ -116,7 +114,7 @@ git push
 
   * что сделал
   * как проверить (1–3 шага)
-  * (для фронта) скрин/видео
+  * (для фронта) скрин/видео в тг
 
 ### 5.2 Если после открытия PR в dev снова появились изменения
 
@@ -135,7 +133,7 @@ git push
 После того как кто-то посмотрел (хотя бы 1 человек):
 
 * мержим PR в `dev`
-* удаляем ветку `feature/my-task` (по желанию)
+* удаляем ветку `feature/my-task`
 
 ---
 

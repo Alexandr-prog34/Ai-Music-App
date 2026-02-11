@@ -15,7 +15,7 @@
 
 Из корня проекта:
 
-```bash
+```
 cp .env.example .env
 docker compose -f infra/docker-compose.yml up --build
 ```
@@ -47,7 +47,7 @@ docker compose -f infra/docker-compose.yml up --build
 
 ## API
 
-```bash
+```
 curl http://localhost:8080/health
 curl http://localhost:8080/ready
 ```
@@ -63,7 +63,7 @@ ready
 
 ## Redis
 
-```bash
+```
 docker exec -it infra-redis-1 redis-cli ping
 ```
 
@@ -77,7 +77,7 @@ PONG
 
 ## Postgres
 
-```bash
+```
 docker exec -it infra-postgres-1 psql -U app -d app
 ```
 
@@ -118,37 +118,37 @@ tracks
 
 ## Запуск
 
-```bash
+```
 docker compose -f infra/docker-compose.yml up
 ```
 
 ## Пересборка (если меняли код/Dockerfile/go.mod)
 
-```bash
+```
 docker compose -f infra/docker-compose.yml up --build
 ```
 
 ## Остановка
 
-```bash
+```
 docker compose -f infra/docker-compose.yml down
 ```
 
 ## Полный сброс (удалить БД и файлы)
 
-```bash
+```
 docker compose -f infra/docker-compose.yml down -v
 ```
 
 ## Посмотреть контейнеры
 
-```bash
+```
 docker compose ps
 ```
 
 ## Посмотреть логи
 
-```bash
+```
 docker compose logs -f
 ```
 
@@ -194,19 +194,19 @@ Endpoints:
 
 # 👨‍💻 Типовой workflow разработчика
 
-Каждый день:
+Поднять
 
-```bash
+```
 git pull
-docker compose up
+docker compose -f infra/docker-compose.yml up
 ```
 
-Потом просто кодим.
+КОДИМ
 
 Остановить:
 
-```bash
-docker compose down
+```
+docker compose -f infra/docker-compose.yml down
 ```
 
 ---
@@ -221,9 +221,9 @@ docker compose down
 
 Самый простой способ:
 
-```bash
-docker compose down -v
-docker compose up --build
+```
+docker compose -f infra/docker-compose.yml down -v
+docker compose -f infra/docker-compose.yml up --build
 ```
 
 Это полностью пересоздаст окружение.
@@ -233,6 +233,3 @@ docker compose up --build
 # ✅ Готово
 
 После запуска Docker можно сразу писать код backend или frontend — окружение полностью готово.
-
-```
-```
