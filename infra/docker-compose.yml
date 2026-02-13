@@ -65,6 +65,18 @@ services:
       - minio
 
 
+  swagger-ui:
+    image: swaggerapi/swagger-ui:latest
+    ports:
+      - "8081:8080"
+    volumes:
+      - ../docs:/spec:ro
+    environment:
+      SWAGGER_JSON: /spec/openapi1.yaml
+    depends_on:
+      - api
+
+
 volumes:
   pgdata:
   miniodata:
