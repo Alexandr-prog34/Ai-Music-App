@@ -1,0 +1,554 @@
+openapi: "3.0.3"
+info:
+  title: AI Music Generator API
+  version: "0.2.0"
+  description: |
+    REST API для генерации музыкальных треков через Suno AI.
+    Внешний сервис: https://api.sunoapi.org/api/v1
+    Авторизация отсутствует — идентификация через X-Device-Id.
+
+    ## Как работает генерация
+    1. Клиент отправляет POST /jobs
+    2. Go API создаёт job в БД и кладёт задачу в Redis
+    3. Go Worker забирает задачу, вызывает Suno API `POST /api/v1/generate`
+    4. Suno возвращает taskId, worker поллит `GET /api/v1/generate/record-info?taskId=...`
+    5. Когда status=SUCCESS, Suno возвращает 2 трека (audioUrl, imageUrl, duration и т.д.)
+    6. Worker скачивает аудио в S3, создаёт записи в tracks, обновляет job.status=ready
+    7. Клиент поллит GET /jobs/{id} каждые 3-5 секунд
+
+    ## Маппинг статусов Suno → наши
+    | Suno status             | Наш статус   |
+    |-------------------------|-------------|
+    | (задача в Redis)        | queued      |
+    | PENDING                 | processing  |
+    | TEXT_SUCCESS             | processing  |
+    | FIRST_SUCCESS            | processing  |
+    | SUCCESS                 | ready       |
+    | CREATE_TASK_FAILED       | failed      |
+    | GENERATE_AUDIO_FAILED    | failed      |
+
+servers:
+  - url: http://localhost:8080/api/v1
+    description: Local dev
+
+# ────────────────────────────────────────────────────────────
+components:
+  parameters:
+    DeviceId:
+      name: X-Device-Id
+      in: header
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: UUID устройства (генерируется клиентом один раз)
+
+    JobId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+
+    TrackId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+
+  schemas:
+    # ── Enums ──
+
+    SunoModel:
+      type: string
+      description: |
+        Версия AI-модели Suno:
+        - V4: улучшенный вокал, до 4 мин
+        - V4_5: умные промпты, до 8 мин
+        - V4_5PLUS: богатый звук, до 8 мин
+        - V4_5ALL: лучшая структура, до 8 мин
+        - V5: новейшая модель
+      enum:
+        - V4
+        - V4_5
+        - V4_5PLUS
+        - V4_5ALL
+        - V5
+      default: V4_5ALL
+
+    VocalGender:
+      type: string
+      enum: [m, f]
+      description: "Предпочтительный пол вокала"
+
+    JobStatus:
+      type: string
+      enum:
+        - queued
+        - processing
+        - ready
+        - failed
+
+    # ── Request / Response ──
+
+    CreateJobRequest:
+      type: object
+      required:
+        - prompt
+      properties:
+        prompt:
+          type: string
+          minLength: 1
+          maxLength: 5000
+          description: |
+            В non-custom mode (по умолчанию): описание идеи трека, макс 500 символов.
+            Suno автоматически генерирует текст и мелодию.
+            В custom mode: точный текст песни (lyrics), макс 5000 символов для V4_5+.
+          example: "Upbeat summer track with synths and acoustic guitar"
+
+        custom_mode:
+          type: boolean
+          default: false
+          description: |
+            false — простой режим: prompt = описание идеи.
+            true — расширенный: prompt = текст песни, обязательны style и title.
+
+        style:
+          type: string
+          maxLength: 1000
+          description: |
+            Стиль/жанр музыки. Обязателен при custom_mode=true.
+            Для V4: макс 200 символов.
+            Для V4_5+: макс 1000 символов.
+          example: "Electronic Pop"
+
+        title:
+          type: string
+          maxLength: 80
+          description: "Название трека. Обязательно при custom_mode=true."
+          example: "Summer Vibes"
+
+        instrumental:
+          type: boolean
+          default: false
+          description: |
+            true — без вокала, инструментальный трек.
+            При custom_mode=true и instrumental=false — prompt будет спет как lyrics.
+
+        model:
+          $ref: "#/components/schemas/SunoModel"
+
+        vocal_gender:
+          $ref: "#/components/schemas/VocalGender"
+
+        negative_tags:
+          type: string
+          maxLength: 200
+          description: "Стили для исключения. Пример: 'Heavy Metal, Screaming'"
+          example: "Heavy Metal, Aggressive"
+
+    Job:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        status:
+          $ref: "#/components/schemas/JobStatus"
+        prompt:
+          type: string
+        custom_mode:
+          type: boolean
+        style:
+          type: string
+          nullable: true
+        title:
+          type: string
+          nullable: true
+        instrumental:
+          type: boolean
+        model:
+          type: string
+        vocal_gender:
+          type: string
+          nullable: true
+        negative_tags:
+          type: string
+          nullable: true
+        suno_task_id:
+          type: string
+          nullable: true
+          description: "taskId из ответа Suno API (заполняется worker-ом)"
+        tracks:
+          type: array
+          nullable: true
+          description: "Suno возвращает 2 трека на запрос. Заполняется когда status=ready."
+          items:
+            $ref: "#/components/schemas/Track"
+        error:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    Track:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        job_id:
+          type: string
+          format: uuid
+        suno_audio_id:
+          type: string
+          description: "ID аудио из Suno (поле id в sunoData[])"
+        title:
+          type: string
+        tags:
+          type: string
+          nullable: true
+          description: "Теги/стиль из Suno — 'electrifying, rock'"
+        duration_sec:
+          type: number
+          format: float
+        audio_url:
+          type: string
+          format: uri
+          description: "Presigned URL из нашего S3"
+        stream_url:
+          type: string
+          format: uri
+          nullable: true
+          description: "Streaming URL из Suno (доступен ~30 сек после старта генерации)"
+        image_url:
+          type: string
+          format: uri
+          nullable: true
+          description: "Обложка трека (сгенерирована Suno)"
+        is_favorite:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+
+    Error:
+      type: object
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+
+  responses:
+    BadRequest:
+      description: Невалидный запрос
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          example:
+            code: "BAD_REQUEST"
+            message: "prompt is required"
+
+    NotFound:
+      description: Ресурс не найден
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          example:
+            code: "NOT_FOUND"
+            message: "job not found"
+
+    DeviceMissing:
+      description: Заголовок X-Device-Id отсутствует
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          example:
+            code: "DEVICE_ID_REQUIRED"
+            message: "X-Device-Id header is missing or invalid"
+
+# ── Эндпоинты ────────────────────────────────────────────────
+paths:
+  # ── Jobs ──
+  /jobs:
+    post:
+      summary: Создать задачу генерации
+      description: |
+        Создаёт job, кладёт в Redis. Worker вызовет Suno:
+        ```
+        POST https://api.sunoapi.org/api/v1/generate
+        Authorization: Bearer <SUNO_API_KEY>
+        {
+          "customMode": <custom_mode>,
+          "instrumental": <instrumental>,
+          "model": <model>,
+          "prompt": <prompt>,
+          "style": <style>,
+          "title": <title>,
+          "negativeTags": <negative_tags>,
+          "vocalGender": <vocal_gender>
+        }
+        ```
+        Suno возвращает `{ "code": 200, "data": { "taskId": "..." } }`.
+        Каждый запрос генерирует ровно **2 трека**.
+      operationId: createJob
+      tags: [Jobs]
+      parameters:
+        - $ref: "#/components/parameters/DeviceId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateJobRequest"
+            examples:
+              simple:
+                summary: Простой режим
+                value:
+                  prompt: "A calm and relaxing piano track with soft melodies"
+                  model: "V4_5ALL"
+                  instrumental: true
+              custom:
+                summary: Custom mode с lyrics
+                value:
+                  prompt: "[Verse]\nNight city lights shining bright\n[Chorus]\nDancing through the night"
+                  custom_mode: true
+                  style: "Electronic Pop"
+                  title: "Night City"
+                  instrumental: false
+                  model: "V5"
+                  vocal_gender: "f"
+                  negative_tags: "Heavy Metal, Screaming"
+      responses:
+        "201":
+          description: Задача создана
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Job"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/DeviceMissing"
+
+    get:
+      summary: Список задач текущего устройства
+      operationId: listJobs
+      tags: [Jobs]
+      parameters:
+        - $ref: "#/components/parameters/DeviceId"
+        - name: status
+          in: query
+          schema:
+            $ref: "#/components/schemas/JobStatus"
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+            minimum: 1
+            maximum: 100
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+            minimum: 0
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Job"
+                  total:
+                    type: integer
+        "401":
+          $ref: "#/components/responses/DeviceMissing"
+
+  /jobs/{id}:
+    get:
+      summary: Статус конкретной задачи (для polling)
+      description: |
+        Клиент поллит каждые 3-5 секунд.
+        Когда status=ready, поле tracks содержит 2 трека с audio_url, stream_url и т.д.
+      operationId: getJob
+      tags: [Jobs]
+      parameters:
+        - $ref: "#/components/parameters/DeviceId"
+        - $ref: "#/components/parameters/JobId"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Job"
+        "401":
+          $ref: "#/components/responses/DeviceMissing"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # ── Tracks ──
+  /tracks:
+    get:
+      summary: Список треков текущего устройства
+      operationId: listTracks
+      tags: [Tracks]
+      parameters:
+        - $ref: "#/components/parameters/DeviceId"
+        - name: favorite
+          in: query
+          schema:
+            type: boolean
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+            minimum: 1
+            maximum: 100
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+            minimum: 0
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Track"
+                  total:
+                    type: integer
+        "401":
+          $ref: "#/components/responses/DeviceMissing"
+
+  /tracks/{id}:
+    get:
+      summary: Информация о треке
+      operationId: getTrack
+      tags: [Tracks]
+      parameters:
+        - $ref: "#/components/parameters/DeviceId"
+        - $ref: "#/components/parameters/TrackId"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Track"
+        "401":
+          $ref: "#/components/responses/DeviceMissing"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+    delete:
+      summary: Удалить трек
+      operationId: deleteTrack
+      tags: [Tracks]
+      parameters:
+        - $ref: "#/components/parameters/DeviceId"
+        - $ref: "#/components/parameters/TrackId"
+      responses:
+        "204":
+          description: Удалён
+        "401":
+          $ref: "#/components/responses/DeviceMissing"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /tracks/{id}/download:
+    get:
+      summary: Скачать трек
+      description: |
+        302 редирект на presigned S3 URL.
+        Файлы из Suno хранятся ~15 дней, поэтому worker
+        скачивает аудио в наш S3 при получении результата.
+      operationId: downloadTrack
+      tags: [Tracks]
+      parameters:
+        - $ref: "#/components/parameters/DeviceId"
+        - $ref: "#/components/parameters/TrackId"
+      responses:
+        "302":
+          description: Redirect
+          headers:
+            Location:
+              schema:
+                type: string
+                format: uri
+        "401":
+          $ref: "#/components/responses/DeviceMissing"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /tracks/{id}/favorite:
+    put:
+      summary: Добавить в избранное
+      operationId: addFavorite
+      tags: [Tracks]
+      parameters:
+        - $ref: "#/components/parameters/DeviceId"
+        - $ref: "#/components/parameters/TrackId"
+      responses:
+        "204":
+          description: OK
+        "401":
+          $ref: "#/components/responses/DeviceMissing"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+    delete:
+      summary: Убрать из избранного
+      operationId: removeFavorite
+      tags: [Tracks]
+      parameters:
+        - $ref: "#/components/parameters/DeviceId"
+        - $ref: "#/components/parameters/TrackId"
+      responses:
+        "204":
+          description: OK
+        "401":
+          $ref: "#/components/responses/DeviceMissing"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # ── System ──
+  /health:
+    get:
+      summary: Health check
+      operationId: healthCheck
+      tags: [System]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              example:
+                status: "ok"
+                suno_credits: 1250
