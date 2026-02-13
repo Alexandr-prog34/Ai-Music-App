@@ -72,7 +72,7 @@ services:
     volumes:
       - ../docs:/spec:ro
     environment:
-      SWAGGER_JSON: /spec/openapi1.yaml
+      SWAGGER_JSON: /spec/openapi1.yml
     depends_on:
       - api
 
