@@ -40,17 +40,31 @@ docker compose -f infra/docker-compose.yml up --build
 | MinIO UI | http://localhost:9001 | файлы / S3 storage |
 | Postgres | localhost:5432        | база данных        |
 | Redis    | localhost:6379        | очередь / кэш      |
+| Swagger  | http://localhost:8081 | визуальная проверка API |
 
 ---
 
 # 🧪 Проверка что всё работает
 
+
+## Swagger UI
+
+Чтобы воспользоваться Swagger UI, просто зайдите на сайт:
+
+```
+http://localhost:8081
+```
+
+В этом интерфейсе можно визуально проверить и протестировать контракт API, посмотреть доступные эндпоинты, их параметры и ответы.
+
 ## API
+
 
 ```
 curl http://localhost:8080/health
+
 curl http://localhost:8080/ready
-```
+
 
 Ожидаем:
 
@@ -194,7 +208,7 @@ Endpoints:
 
 # 👨‍💻 Типовой workflow разработчика
 
-Поднять
+Поднять:
 
 ```
 git pull
