@@ -16,7 +16,7 @@
 Из корня проекта:
 
 ```
-cp .env.example .env
+cp .env.example .env 
 docker compose -f infra/docker-compose.yml up --build
 ```
 
