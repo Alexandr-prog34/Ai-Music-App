@@ -21,13 +21,13 @@ type JobParams struct {
 }
 
 // Validate — правила из контракта (мин/макс длины + минимальные смысловые проверки).
-func (p JobParams) Validate() error {
+func (p *JobParams) Validate() error {
 	prompt := strings.TrimSpace(p.Prompt)
 	if prompt == "" {
 		return errors.New("prompt is required")
 	}
 	if len(prompt) > 5000 {
-		return errors.New("prompt is too long (max 5000)")
+		return errors.New("prompt is too long (max 5000 symbols)")
 	}
 	if p.Style != nil && len(strings.TrimSpace(*p.Style)) > 1000 {
 		return errors.New("style is too long (max 1000)")
