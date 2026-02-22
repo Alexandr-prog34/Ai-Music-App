@@ -1,7 +1,6 @@
 package domain
 
 import (
-	"errors"
 	"strings"
 	"time"
 
@@ -33,19 +32,19 @@ type Track struct {
 
 func (t Track) Validate() error {
 	if t.ID == uuid.Nil {
-		return errors.New("track.id is required")
+		return InvalidInput(ErrTrackIDRequired)
 	}
 	if t.JobID == uuid.Nil {
-		return errors.New("track.job_id is required")
+		return InvalidInput(ErrTrackJobIDRequired)
 	}
 	if strings.TrimSpace(t.SunoAudioID) == "" {
-		return errors.New("track.suno_audio_id is required")
+		return InvalidInput(ErrTrackSunoAudioIDReq)
 	}
 	if strings.TrimSpace(t.Title) == "" {
-		return errors.New("track.title is required")
+		return InvalidInput(ErrTrackTitleRequired)
 	}
 	if strings.TrimSpace(t.AudioURL) == "" {
-		return errors.New("track.audio_url is required")
+		return InvalidInput(ErrTrackAudioURLRequired)
 	}
 	return nil
 }
