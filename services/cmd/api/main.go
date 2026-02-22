@@ -3,31 +3,26 @@ package main
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"log"
 	"net"
 	"net/http"
 	"os"
 	"time"
 
-	"github.com/google/uuid"
 	_ "github.com/lib/pq"
 	"github.com/redis/go-redis/v9"
 
-	"github.com/AI-Music-App001/Ai-Music-Generator/services/internal/httpapi/dto"
+	"github.com/AI-Music-App001/Ai-Music-Generator/services/internal/httpapi/handlers"
+	"github.com/AI-Music-App001/Ai-Music-Generator/services/internal/service"
 	"github.com/AI-Music-App001/Ai-Music-Generator/services/internal/queue"
 )
 
 func main() {
 	port := getenv("API_PORT", "8080")
 	postgresDSN := os.Getenv("POSTGRES_DSN")
-	redisAddr := os.Getenv("REDIS_ADDR")
+	redisAddr := getenv("REDIS_ADDR", "redis:6379")
 
-	// --- создаём Redis client и очередь ---
-	if redisAddr == "" {
-		redisAddr = "redis:6379"
-	}
-
+	// ---------- Redis ----------
 	rdb := redis.NewClient(&redis.Options{
 		Addr: redisAddr,
 	})
@@ -38,8 +33,12 @@ func main() {
 	}
 
 	jobQueue := queue.NewRedisJobQueue(rdb, "jobs")
-	// --------------------------------------
 
+	// ---------- Сервис и handler для /jobs ----------
+	jobSvc := service.NewJobService(jobQueue)
+	jobsHandler := handlers.NewJobsHandler(jobSvc)
+
+	// ---------- HTTP mux ----------
 	mux := http.NewServeMux()
 
 	// /health
@@ -75,46 +74,10 @@ func main() {
 		_, _ = w.Write([]byte("ready"))
 	})
 
-	// --- НОВОЕ: временный handler для POST /jobs ---
-	mux.HandleFunc("/jobs", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost {
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-			return
-		}
+	// /jobs — всё отдано в твой handler
+	mux.Handle("/jobs", jobsHandler)
 
-		// читаем body в CreateJobRequest (из dto)
-		var req dto.CreateJobRequest
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			http.Error(w, "invalid json: "+err.Error(), http.StatusBadRequest)
-			return
-		}
-		if req.Prompt == "" {
-			http.Error(w, "prompt is required", http.StatusBadRequest)
-			return
-		}
-
-		// пока делаем простой фейк: создаём jobID и кидаем в очередь
-		jobID := uuid.New()
-
-		if err := jobQueue.EnqueueJob(r.Context(), jobID); err != nil {
-			log.Printf("api: failed to enqueue job: %v", err)
-			http.Error(w, "failed to enqueue job", http.StatusInternalServerError)
-			return
-		}
-
-		log.Printf("api: enqueued job %s", jobID.String())
-
-		// отдаём простой ответ, чтобы Swagger был доволен
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusCreated)
-		_ = json.NewEncoder(w).Encode(map[string]any{
-			"id":     jobID.String(),
-			"status": "queued",
-		})
-	})
-	// ------------------------------------------------
-
-	// --- CORS wrapper, как у тебя было ---
+	// ---------- CORS wrapper ----------
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
@@ -127,7 +90,6 @@ func main() {
 
 		mux.ServeHTTP(w, r)
 	})
-	// ------------------------------------
 
 	addr := ":" + port
 	log.Printf("api listening on %s", addr)

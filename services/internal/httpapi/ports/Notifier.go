@@ -1,12 +1,13 @@
 package ports
 
 import (
-	"github.com/google/uuid"
+	"context"
 
 	"github.com/AI-Music-App001/Ai-Music-Generator/services/internal/domain"
+	"github.com/google/uuid"
 )
 
-// Notifier — абстракция для пуш-уведомлений (WS сейчас, потом можно и FCM и т.д.)
+// Notifier — абстракция для пуш-уведомлений (WS сейчас, потом FCM/APNs и т.д.)
 type Notifier interface {
-	JobUpdated(userID uuid.UUID, job domain.Job) error
+	JobUpdated(ctx context.Context, deviceID uuid.UUID, job domain.Job) error
 }

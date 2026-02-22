@@ -1,7 +1,6 @@
 package domain
 
 import (
-	"errors"
 	"time"
 
 	"github.com/google/uuid"
@@ -16,10 +15,10 @@ type User struct {
 
 func (u User) Validate() error {
 	if u.ID == uuid.Nil {
-		return errors.New("user.id is required")
+		return InvalidInput(ErrUserIDRequired)
 	}
 	if u.InstallID == uuid.Nil {
-		return errors.New("user.install_id is required")
+		return InvalidInput(ErrUserInstallIDRequired)
 	}
 	return nil
 }
