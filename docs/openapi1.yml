@@ -1,0 +1,572 @@
+openapi: "3.0.3"
+info:
+  title: AI Music Generator API
+  version: "0.4.0"
+  description: |
+    REST API + WebSocket для генерации музыкальных треков через Suno AI.
+
+    ## Архитектура
+
+    ```
+    Flutter ──WS──→ Go API ←──callback──── Suno
+               ↕         ↕
+             REST      Redis
+               ↓         ↓
+            Go API → Go Worker → Suno POST /generate
+    ```
+
+    ### Flow генерации
+    1. Flutter при старте открывает WebSocket: `ws://host/api/v1/ws?device_id=<uuid>`
+    2. Flutter отправляет `POST /jobs` → получает job (status=queued)
+    3. Worker забирает из Redis → `POST api.sunoapi.org/api/v1/generate` с callBackUrl
+    4. Worker ставит job.status=processing → **WS push** → Flutter видит "генерируется..."
+    5. Suno вызывает `POST /internal/suno/callback` (стадии: text → first → complete)
+    6. На complete: API скачивает mp3 → S3 → создаёт tracks → job.status=ready
+    7. **WS push** → Flutter моментально получает готовые треки
+
+    ### WebSocket протокол
+    Сервер отправляет JSON-сообщения клиенту:
+    ```json
+    {
+      "type": "job_updated",
+      "data": { ... полный объект Job с треками ... }
+    }
+    ```
+    Типы сообщений:
+    - `job_updated` — статус задачи изменился (processing / ready / failed)
+
+    Клиент может отправлять:
+    - `{ "type": "ping" }` → сервер ответит `{ "type": "pong" }`
+
+    ### Suno callback стадии
+    | callbackType | Наша реакция                              | WS push? |
+    |-------------|-------------------------------------------|----------|
+    | text        | Логируем                                  | нет      |
+    | first       | Логируем                                  | нет      |
+    | complete    | Скачиваем mp3, создаём tracks, status=ready | **да** |
+    | error       | status=failed                             | **да** |
+
+servers:
+  - url: http://localhost:8080
+    description: Local dev
+
+components:
+  parameters:
+    DeviceId:
+      name: X-Device-Id
+      in: header
+      required: true
+      schema:
+        type: string
+        format: uuid
+
+    JobId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+
+    TrackId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+
+  schemas:
+    SunoModel:
+      type: string
+      enum: [V4, V4_5, V4_5PLUS, V4_5ALL, V5]
+      default: V4_5ALL
+
+    VocalGender:
+      type: string
+      enum: [m, f]
+
+    JobStatus:
+      type: string
+      enum: [queued, processing, ready, failed]
+
+    # ── WebSocket Messages ──
+
+    WsMessage:
+      type: object
+      description: "Сообщение от сервера через WebSocket"
+      properties:
+        type:
+          type: string
+          enum: [job_updated, pong, error]
+        data:
+          oneOf:
+            - $ref: "#/components/schemas/Job"
+            - type: object
+
+    WsClientMessage:
+      type: object
+      description: "Сообщение от клиента через WebSocket"
+      properties:
+        type:
+          type: string
+          enum: [ping]
+
+    # ── REST Requests ──
+
+    CreateJobRequest:
+      type: object
+      required: [prompt]
+      properties:
+        prompt:
+          type: string
+          minLength: 1
+          maxLength: 5000
+          example: "Upbeat summer track with synths and acoustic guitar"
+        custom_mode:
+          type: boolean
+          default: false
+        style:
+          type: string
+          maxLength: 1000
+          example: "Electronic Pop"
+        title:
+          type: string
+          maxLength: 80
+          example: "Summer Vibes"
+        instrumental:
+          type: boolean
+          default: false
+        model:
+          $ref: "#/components/schemas/SunoModel"
+        vocal_gender:
+          $ref: "#/components/schemas/VocalGender"
+        negative_tags:
+          type: string
+          maxLength: 200
+          example: "Heavy Metal, Aggressive"
+
+    # ── REST Responses ──
+
+    Job:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        status:
+          $ref: "#/components/schemas/JobStatus"
+        prompt:
+          type: string
+        custom_mode:
+          type: boolean
+        style:
+          type: string
+          nullable: true
+        title:
+          type: string
+          nullable: true
+        instrumental:
+          type: boolean
+        model:
+          type: string
+        vocal_gender:
+          type: string
+          nullable: true
+        negative_tags:
+          type: string
+          nullable: true
+        suno_task_id:
+          type: string
+          nullable: true
+        tracks:
+          type: array
+          nullable: true
+          description: "2 трека от Suno, заполняется при status=ready"
+          items:
+            $ref: "#/components/schemas/Track"
+        error:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    Track:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        job_id:
+          type: string
+          format: uuid
+        suno_audio_id:
+          type: string
+        title:
+          type: string
+        tags:
+          type: string
+          nullable: true
+        duration_sec:
+          type: number
+          format: float
+        audio_url:
+          type: string
+          format: uri
+          description: "Presigned URL из нашего S3"
+        stream_url:
+          type: string
+          format: uri
+          nullable: true
+        image_url:
+          type: string
+          format: uri
+          nullable: true
+        is_favorite:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+
+    Error:
+      type: object
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+
+  responses:
+    BadRequest:
+      description: Невалидный запрос
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    NotFound:
+      description: Не найден
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    DeviceMissing:
+      description: X-Device-Id отсутствует
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+
+paths:
+
+  # ════════════════════════════════════════
+  #  WEBSOCKET
+  # ════════════════════════════════════════
+
+  /ws:
+    get:
+      summary: WebSocket соединение
+      description: |
+        **Upgrade to WebSocket.** Flutter подключается при запуске приложения.
+        Через это соединение приходят реалтайм-обновления о статусе задач.
+
+        **Подключение:**
+        ```
+        ws://localhost:8080/api/v1/ws?device_id=<uuid>
+        ```
+
+        **Сервер → клиент:**
+        ```json
+        {
+          "type": "job_updated",
+          "data": {
+            "id": "...",
+            "status": "ready",
+            "tracks": [ ... ]
+          }
+        }
+        ```
+
+        **Клиент → сервер:**
+        ```json
+        { "type": "ping" }
+        ```
+        Сервер ответит: `{ "type": "pong" }`
+
+        **Реконнект:** при обрыве Flutter должен переподключаться
+        с экспоненциальным backoff (1s, 2s, 4s, 8s, max 30s).
+
+        **Heartbeat:** сервер шлёт ping-frame каждые 30 сек,
+        клиент должен ответить pong-frame (стандарт WebSocket).
+        Если клиент не отвечает 90 сек — соединение закрывается.
+      operationId: websocketConnect
+      tags: [WebSocket]
+      parameters:
+        - name: device_id
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "101":
+          description: Switching Protocols (WebSocket upgrade)
+
+  # ════════════════════════════════════════
+  #  PUBLIC REST — для Flutter
+  # ════════════════════════════════════════
+
+  /jobs:
+    post:
+      summary: Создать задачу генерации
+      description: |
+        Создаёт job → Redis → Worker → Suno.
+        Результат придёт через **WebSocket** (type: job_updated).
+        REST-ответ возвращает job со status=queued.
+      operationId: createJob
+      tags: [Jobs]
+      parameters:
+        - $ref: "#/components/parameters/DeviceId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateJobRequest"
+            examples:
+              simple:
+                summary: Простой режим
+                value:
+                  prompt: "A calm piano track with soft melodies"
+                  model: "V4_5ALL"
+                  instrumental: true
+              custom:
+                summary: Custom mode
+                value:
+                  prompt: "[Verse]\nNight city lights\n[Chorus]\nDancing through the night"
+                  custom_mode: true
+                  style: "Electronic Pop"
+                  title: "Night City"
+                  model: "V5"
+                  vocal_gender: "f"
+      responses:
+        "201":
+          description: Задача создана (далее обновления через WS)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Job"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/DeviceMissing"
+
+    get:
+      summary: Список задач
+      description: "Для начальной загрузки / истории. Реалтайм — через WS."
+      operationId: listJobs
+      tags: [Jobs]
+      parameters:
+        - $ref: "#/components/parameters/DeviceId"
+        - name: status
+          in: query
+          schema:
+            $ref: "#/components/schemas/JobStatus"
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Job"
+                  total:
+                    type: integer
+
+  /jobs/{id}:
+    get:
+      summary: Получить задачу по ID
+      description: "Fallback если WS-обновление пропущено."
+      operationId: getJob
+      tags: [Jobs]
+      parameters:
+        - $ref: "#/components/parameters/DeviceId"
+        - $ref: "#/components/parameters/JobId"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Job"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /tracks:
+    get:
+      summary: Список треков
+      operationId: listTracks
+      tags: [Tracks]
+      parameters:
+        - $ref: "#/components/parameters/DeviceId"
+        - name: favorite
+          in: query
+          schema:
+            type: boolean
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Track"
+                  total:
+                    type: integer
+
+  /tracks/{id}:
+    get:
+      summary: Информация о треке
+      operationId: getTrack
+      tags: [Tracks]
+      parameters:
+        - $ref: "#/components/parameters/DeviceId"
+        - $ref: "#/components/parameters/TrackId"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Track"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+    delete:
+      summary: Удалить трек
+      operationId: deleteTrack
+      tags: [Tracks]
+      parameters:
+        - $ref: "#/components/parameters/DeviceId"
+        - $ref: "#/components/parameters/TrackId"
+      responses:
+        "204":
+          description: Удалён
+
+  /tracks/{id}/download:
+    get:
+      summary: Скачать трек
+      operationId: downloadTrack
+      tags: [Tracks]
+      parameters:
+        - $ref: "#/components/parameters/DeviceId"
+        - $ref: "#/components/parameters/TrackId"
+      responses:
+        "302":
+          description: Redirect → presigned S3 URL
+
+  /tracks/{id}/favorite:
+    put:
+      summary: В избранное
+      operationId: addFavorite
+      tags: [Tracks]
+      parameters:
+        - $ref: "#/components/parameters/DeviceId"
+        - $ref: "#/components/parameters/TrackId"
+      responses:
+        "204":
+          description: OK
+    delete:
+      summary: Убрать из избранного
+      operationId: removeFavorite
+      tags: [Tracks]
+      parameters:
+        - $ref: "#/components/parameters/DeviceId"
+        - $ref: "#/components/parameters/TrackId"
+      responses:
+        "204":
+          description: OK
+
+  # ════════════════════════════════════════
+  #  INTERNAL — callback от Suno
+  # ════════════════════════════════════════
+
+  /internal/suno/callback:
+    post:
+      summary: Callback от Suno (не для Flutter)
+      description: |
+        Suno вызывает при завершении генерации.
+
+        Логика:
+        1. Ответить `200` сразу
+        2. В горутине: обработать complete → скачать mp3 → S3 → tracks → job.status=ready
+        3. **Отправить job через WebSocket** нужному device_id
+
+        Валидация: проверить `?token=<SUNO_CALLBACK_SECRET>`
+        Идемпотентность: пропускать если job уже ready
+      operationId: sunoCallback
+      tags: [Internal]
+      parameters:
+        - name: token
+          in: query
+          required: true
+          schema:
+            type: string
+          description: "Секрет для валидации"
+      responses:
+        "200":
+          description: Принят
+          content:
+            application/json:
+              example:
+                status: "received"
+        "401":
+          description: Неверный token
+
+  # ════════════════════════════════════════
+  #  SYSTEM
+  # ════════════════════════════════════════
+
+  /health:
+    get:
+      summary: Health check
+      operationId: healthCheck
+      tags: [System]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              example:
+                status: "ok"
