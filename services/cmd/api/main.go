@@ -37,18 +37,18 @@ func main() {
 		log.Fatalf("api: redis ping failed: %v", err)
 	}
 
-	// ✅ теперь конструктор очереди требует logger
+	//  конструктор очереди требует logger
 	jobQueue := queue.NewRedisJobQueue(rdb, "jobs", logger)
 
-	// ✅ заглушка jobRepo (чтобы main не раздувать)
+	//  заглушка jobRepo (чтобы main не раздувать)
 	jobRepo := noop.NewJobRepo()
 
 	// ---------- Сервис и handler для /jobs ----------
-	// ✅ сервис теперь требует jobRepo + jobQueue
 	jobSvc := service.NewJobService(jobRepo, jobQueue)
-
-	// ✅ handler теперь требует logger
 	jobsHandler := handlers.NewJobsHandler(jobSvc, logger)
+
+	//  handler для callback'ов Suno (локальная обработка suno.ErrInvalidCallback)
+	sunoCallbackHandler := handlers.NewSunoCallbackHandler(logger)
 
 	// ---------- HTTP mux ----------
 	mux := http.NewServeMux()
@@ -86,8 +86,11 @@ func main() {
 		_, _ = w.Write([]byte("ready"))
 	})
 
-	// /jobs — всё отдано в твой handler
+	// /jobs
 	mux.Handle("/jobs", jobsHandler)
+
+	// /suno/callback
+	mux.Handle("/suno/callback", sunoCallbackHandler)
 
 	// ---------- CORS wrapper ----------
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

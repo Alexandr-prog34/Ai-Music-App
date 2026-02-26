@@ -52,7 +52,6 @@ func deviceIDFromRequest(r *http.Request) (uuid.UUID, error) {
 	return uuid.Parse(raw)
 }
 
-
 // POST /jobs
 func (h *JobsHandler) handleCreateJob(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
@@ -74,11 +73,17 @@ func (h *JobsHandler) handleCreateJob(w http.ResponseWriter, r *http.Request) {
 	params := req.ToJobParams()
 	params.Normalize()
 
+	//  добавили валидацию до вызова сервиса
+	if err := params.Validate(); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
 	// сервис принимает домен и возвращает домен
 	job, err := h.svc.CreateJob(r.Context(), deviceID, params)
 	if err != nil {
-		// ✅ разделяем на sentinel-ошибки через switch-case (вынесено в errors.go)
-		writeError(w, err)
+		//  разделяем на sentinel-ошибки через switch-case (вынесено в errors.go)
+		writeError(w, err, h.logger)
 		return
 	}
 
@@ -88,7 +93,7 @@ func (h *JobsHandler) handleCreateJob(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
 
-	//  не игнорируем encode: логируем ошибку
+	// не игнорируем encode: логируем ошибку
 	if err := json.NewEncoder(w).Encode(resp); err != nil {
 		h.logger.Error(
 			"failed to encode create job response",
