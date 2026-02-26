@@ -38,6 +38,9 @@ var (
 
 	ErrVocalGenderNotAllowedInstrumental = errors.New("vocal_gender must be empty when instrumental=true")
 	ErrNegativeTagsTooLong               = errors.New("negative_tags is too long")
+	// Not found (HTTP 404)
+	ErrJobNotFound   = errors.New("job not found")
+	ErrTrackNotFound = errors.New("track not found")
 
 	// Job transitions
 	ErrInvalidStatusTransition = errors.New("invalid status transition")

@@ -208,12 +208,10 @@ func (j *Job) MarkProcessing(now time.Time, sunoTaskID string) error {
 		j.StartedAt = &now
 	}
 	j.Attempts++
-
 	if j.SunoTaskID == nil && strings.TrimSpace(sunoTaskID) != "" {
 		v := strings.TrimSpace(sunoTaskID)
 		j.SunoTaskID = &v
 	}
-
 	return nil
 }
 
