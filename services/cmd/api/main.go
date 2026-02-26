@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"log"
+	"log/slog"
 	"net"
 	"net/http"
 	"os"
@@ -13,14 +14,18 @@ import (
 	"github.com/redis/go-redis/v9"
 
 	"github.com/AI-Music-App001/Ai-Music-Generator/services/internal/httpapi/handlers"
-	"github.com/AI-Music-App001/Ai-Music-Generator/services/internal/service"
 	"github.com/AI-Music-App001/Ai-Music-Generator/services/internal/queue"
+	"github.com/AI-Music-App001/Ai-Music-Generator/services/internal/repo/noop"
+	"github.com/AI-Music-App001/Ai-Music-Generator/services/internal/service"
 )
 
 func main() {
 	port := getenv("API_PORT", "8080")
 	postgresDSN := os.Getenv("POSTGRES_DSN")
 	redisAddr := getenv("REDIS_ADDR", "redis:6379")
+
+	// ---------- Logger ----------
+	logger := slog.Default()
 
 	// ---------- Redis ----------
 	rdb := redis.NewClient(&redis.Options{
@@ -32,11 +37,18 @@ func main() {
 		log.Fatalf("api: redis ping failed: %v", err)
 	}
 
-	jobQueue := queue.NewRedisJobQueue(rdb, "jobs")
+	// ✅ теперь конструктор очереди требует logger
+	jobQueue := queue.NewRedisJobQueue(rdb, "jobs", logger)
+
+	// ✅ заглушка jobRepo (чтобы main не раздувать)
+	jobRepo := noop.NewJobRepo()
 
 	// ---------- Сервис и handler для /jobs ----------
-	jobSvc := service.NewJobService(jobQueue)
-	jobsHandler := handlers.NewJobsHandler(jobSvc)
+	// ✅ сервис теперь требует jobRepo + jobQueue
+	jobSvc := service.NewJobService(jobRepo, jobQueue)
+
+	// ✅ handler теперь требует logger
+	jobsHandler := handlers.NewJobsHandler(jobSvc, logger)
 
 	// ---------- HTTP mux ----------
 	mux := http.NewServeMux()
