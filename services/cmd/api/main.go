@@ -48,7 +48,8 @@ func main() {
 	jobsHandler := handlers.NewJobsHandler(jobSvc, logger)
 
 	//  handler для callback'ов Suno (локальная обработка suno.ErrInvalidCallback)
-	sunoCallbackHandler := handlers.NewSunoCallbackHandler(logger)
+	sunoSecret := os.Getenv("SUNO_CALLBACK_SECRET")
+	sunoCallbackHandler := handlers.NewSunoCallbackHandler(sunoSecret, logger)
 
 	// ---------- HTTP mux ----------
 	mux := http.NewServeMux()

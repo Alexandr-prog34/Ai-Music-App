@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"crypto/subtle"
 	"encoding/json"
 	"errors"
 	"log/slog"
@@ -9,17 +10,23 @@ import (
 	"github.com/AI-Music-App001/Ai-Music-Generator/services/internal/suno"
 )
 
+const sunoCallbackSecretHeader = "X-Suno-Callback-Secret"
+
 // SunoCallbackHandler — HTTP обработчик callback'ов от Suno.
 type SunoCallbackHandler struct {
 	logger *slog.Logger
+	secret string // SUNO_CALLBACK_SECRET из конфига
 }
 
 // NewSunoCallbackHandler — конструктор.
-func NewSunoCallbackHandler(logger *slog.Logger) *SunoCallbackHandler {
+func NewSunoCallbackHandler(secret string, logger *slog.Logger) *SunoCallbackHandler {
 	if logger == nil {
 		logger = slog.Default()
 	}
-	return &SunoCallbackHandler{logger: logger}
+	return &SunoCallbackHandler{
+		logger: logger,
+		secret: secret,
+	}
 }
 
 // ServeHTTP — POST callback от Suno.
@@ -29,6 +36,18 @@ func (h *SunoCallbackHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	defer r.Body.Close()
+
+	// Защита от подделки callback: проверяем секрет из конфига
+	if h.secret == "" {
+		h.logger.Error("SUNO_CALLBACK_SECRET is empty")
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	got := r.Header.Get(sunoCallbackSecretHeader)
+	if subtle.ConstantTimeCompare([]byte(got), []byte(h.secret)) != 1 {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
 
 	var req suno.SunoCallbackRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -47,5 +66,10 @@ func (h *SunoCallbackHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) 
 	}
 
 	// TODO: здесь будет обработка callback (обновить job, сохранить tracks, уведомить)
+
+	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
+	if err := json.NewEncoder(w).Encode(map[string]string{"status": "received"}); err != nil {
+		h.logger.Error("failed to encode callback response", "err", err)
+	}
 }
