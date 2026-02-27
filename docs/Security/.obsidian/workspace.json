@@ -1,0 +1,204 @@
+{
+  "main": {
+    "id": "b011e42983085087",
+    "type": "split",
+    "children": [
+      {
+        "id": "e48dd6de35db2991",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "c3178fd4649d7d44",
+            "type": "leaf",
+            "state": {
+              "type": "markdown",
+              "state": {
+                "file": "CICD.md",
+                "mode": "source",
+                "source": false
+              },
+              "icon": "lucide-file",
+              "title": "CICD"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "vertical"
+  },
+  "left": {
+    "id": "f7d652f9ee59a8ed",
+    "type": "split",
+    "children": [
+      {
+        "id": "e5d1cb742a8c38bf",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "f5d753db1446b26a",
+            "type": "leaf",
+            "state": {
+              "type": "file-explorer",
+              "state": {
+                "sortOrder": "alphabetical",
+                "autoReveal": false
+              },
+              "icon": "lucide-folder-closed",
+              "title": "Files"
+            }
+          },
+          {
+            "id": "e80bfccbde95f9d5",
+            "type": "leaf",
+            "state": {
+              "type": "search",
+              "state": {
+                "query": "",
+                "matchingCase": false,
+                "explainSearch": false,
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical"
+              },
+              "icon": "lucide-search",
+              "title": "Search"
+            }
+          },
+          {
+            "id": "526855002e181415",
+            "type": "leaf",
+            "state": {
+              "type": "bookmarks",
+              "state": {},
+              "icon": "lucide-bookmark",
+              "title": "Bookmarks"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "horizontal",
+    "width": 300
+  },
+  "right": {
+    "id": "1f8724effc998332",
+    "type": "split",
+    "children": [
+      {
+        "id": "e1afe877eac2fd25",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "c6e6875021c77ac3",
+            "type": "leaf",
+            "state": {
+              "type": "backlink",
+              "state": {
+                "file": "SSL-TLS (HTTPS).md",
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical",
+                "showSearch": false,
+                "searchQuery": "",
+                "backlinkCollapsed": false,
+                "unlinkedCollapsed": true
+              },
+              "icon": "links-coming-in",
+              "title": "Backlinks for SSL-TLS (HTTPS)"
+            }
+          },
+          {
+            "id": "291850ed74b36f81",
+            "type": "leaf",
+            "state": {
+              "type": "outgoing-link",
+              "state": {
+                "file": "SSL-TLS (HTTPS).md",
+                "linksCollapsed": false,
+                "unlinkedCollapsed": true
+              },
+              "icon": "links-going-out",
+              "title": "Outgoing links from SSL-TLS (HTTPS)"
+            }
+          },
+          {
+            "id": "b8e534babb2a2f90",
+            "type": "leaf",
+            "state": {
+              "type": "tag",
+              "state": {
+                "sortOrder": "frequency",
+                "useHierarchy": true,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-tags",
+              "title": "Tags"
+            }
+          },
+          {
+            "id": "62c432bd71f9cbaf",
+            "type": "leaf",
+            "state": {
+              "type": "all-properties",
+              "state": {
+                "sortOrder": "frequency",
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-archive",
+              "title": "All properties"
+            }
+          },
+          {
+            "id": "efeb044e9affd5bc",
+            "type": "leaf",
+            "state": {
+              "type": "outline",
+              "state": {
+                "file": "SSL-TLS (HTTPS).md",
+                "followCursor": false,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-list",
+              "title": "Outline of SSL-TLS (HTTPS)"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "horizontal",
+    "width": 300,
+    "collapsed": true
+  },
+  "left-ribbon": {
+    "hiddenItems": {
+      "switcher:Open quick switcher": false,
+      "graph:Open graph view": false,
+      "canvas:Create new canvas": false,
+      "daily-notes:Open today's daily note": false,
+      "templates:Insert template": false,
+      "command-palette:Open command palette": false,
+      "bases:Create new base": false
+    }
+  },
+  "active": "c3178fd4649d7d44",
+  "lastOpenFiles": [
+    "OWASP.md",
+    "Top 10/Software Supply Chain Failures.md",
+    "Top 10/Security Misconfiguration.md",
+    "Top 10/Insecure Design.md",
+    "Top 10/Injection.md",
+    "Top 10/Cryptographic Failures.md",
+    "Top 10/Broken Access Control.md",
+    "CICD.md",
+    "Кибербез.md",
+    "SSL-TLS (HTTPS).md",
+    "Top 10/Identification and Authentication Failures.md",
+    "Top 10/Software or Data Integrity Failures.md",
+    "Top 10/Security Logging and Alerting Failures.md",
+    "CI/CD.md",
+    "CI"
+  ]
+}
