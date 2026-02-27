@@ -1,21 +1,29 @@
+name: mobile_flutter
+description: A new Flutter project.
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: ">=3.0.0 <4.0.0"
+
 dependencies:
   flutter:
     sdk: flutter
 
-    freezed_annotation: ^2.4.1
-    json_annotation: ^4.8.1
+  freezed_annotation: ^2.4.1
+  json_annotation: ^4.8.1
+  http: ^1.1.0
+  web_socket_channel: ^2.4.0
+  flutter_secure_storage: ^9.0.0
+  uuid: ^4.2.1
+  provider: ^6.1.1
 
-    http: ^1.1.0
-    web_socket_channel: ^2.4.0
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  build_runner: ^2.4.8
+  freezed: ^2.4.6
+  json_serializable: ^6.7.1
 
-    flutter_secure_storage: ^9.0.0
-    uuid: ^4.2.1
-
-    provider: ^6.1.1
-
-    dev_dependencies:
-      flutter_test:
-        sdk: flutter
-      build_runner: ^2.4.8
-      freezed: ^2.4.6
-      json_serializable: ^6.7.1
+flutter:
+  uses-material-design: true
