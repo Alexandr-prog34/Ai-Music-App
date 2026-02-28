@@ -16,5 +16,5 @@ type JobRepo interface {
 	// ListJobs — по контракту listjobs. Возвращаем:
 	// - список
 	// - total (для пагинации на клиенте)
-	ListJobs(ctx context.Context, deviceID uuid.UUID, status *domain.JobStatus, limit, offset int) ([]domain.Job, int, error)
+	ListJobs(ctx context.Context, userID uuid.UUID, status *domain.JobStatus, limit, offset int) ([]domain.Job, int, error)
 }

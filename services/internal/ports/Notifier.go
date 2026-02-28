@@ -9,5 +9,5 @@ import (
 
 // Notifier — абстракция для пуш-уведомлений (WS сейчас, потом FCM/APNs и т.д.)
 type Notifier interface {
-	JobUpdated(ctx context.Context, deviceID uuid.UUID, job domain.Job) error
+	JobUpdated(ctx context.Context, installID uuid.UUID, job domain.Job) error
 }
