@@ -1,9 +1,9 @@
 enum SunoModel{
-  v4('V4'),
-  v45('V4_5'),
-  v45plus('V4_5PLUS'),
-  v45all('V4_5ALL'),
-  v5('V5');
+  V4('V4'),
+  V4_5('V4_5'),
+  V4_5PLUS('V4_5PLUS'),
+  V4_5ALL('V4_5ALL'),
+  V5('V5');
 
   final String value;
 
@@ -12,7 +12,7 @@ enum SunoModel{
   //JSON → enum
   static SunoModel fromJson(String? value) {
     if (value == null) {
-      return SunoModel.v45all; //дефолт
+      return SunoModel.V4_5ALL; //дефолт
     }
 
     for (final model in SunoModel.values) {
@@ -20,7 +20,7 @@ enum SunoModel{
         return model;
       }
     }
-    return SunoModel.v45all;
+    return SunoModel.V4_5ALL;
   }
 
   //enum → JSON

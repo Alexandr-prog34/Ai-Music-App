@@ -10,16 +10,26 @@ class JobsApi {
   JobsApi(this.dio);
 
   //POST /jobs
-  //Создать новую задачу генерации
   Future<Job> createJob(CreateJobRequest request) async {
     final response = await dio.post(
       "/jobs",
       data: request.toJson(),
     );
-    
-    return Job.fromJson(response.data);
+
+    final data = response.data;
+
+    if (data == null) {
+      throw const FormatException(
+        'Empty response when creating job',
+      );
+    }
+
+    return Job.fromJson(
+      data as Map<String, dynamic>,
+    );
   }
 
+  //GET /jobs
   Future<List<Job>> listJobs({
     JobStatus? status,
     int limit = 20,
@@ -34,18 +44,41 @@ class JobsApi {
       },
     );
 
-    final items = (response.data["items"] as List?) ?? [];
+    final data = response.data;
+
+    if (data == null) {
+      throw const FormatException(
+        'Empty response when listing jobs',
+      );
+    }
+
+    final map = data as Map<String, dynamic>;
+
+    final items = (map["items"] as List?) ?? [];
 
     return items
-        .map((json) => Job.fromJson(json as Map<String, dynamic>))
+        .map(
+          (json) => Job.fromJson(
+            json as Map<String, dynamic>,
+          ),
+        )
         .toList();
   }
 
-  /// GET /jobs/{id}
-  /// Получить конкретную задачу
+  //GET /jobs/{id}
   Future<Job> getJob(String id) async {
     final response = await dio.get("/jobs/$id");
 
-    return Job.fromJson(response.data);
+    final data = response.data;
+
+    if (data == null) {
+      throw const FormatException(
+        'Empty response when getting job',
+      );
+    }
+
+    return Job.fromJson(
+      data as Map<String, dynamic>,
+    );
   }
 }

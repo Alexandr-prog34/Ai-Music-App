@@ -1,5 +1,7 @@
+import 'package:dio/dio.dart';
+
 Dio createDio(String deviceId) {
-  return Dio(
+  final dio = Dio(
     BaseOptions(
       baseUrl: "http://localhost:8080",
       headers: {
@@ -8,4 +10,15 @@ Dio createDio(String deviceId) {
       },
     ),
   );
+
+  //логирование
+  dio.interceptors.add(
+    LogInterceptor(
+      request: true,
+      requestBody: true,
+      responseBody: true,
+    ),
+  );
+
+  return dio;
 }

@@ -9,11 +9,18 @@ enum JobStatus {
   const JobStatus(this.value);
 
   factory JobStatus.fromJson(String? value) {
-  return JobStatus.values.firstWhere(
-    (e) => e.value == value,
-    orElse: () => JobStatus.queued, // default(?)
-  );
-}
+    if (value == null) {
+      throw const FormatException(
+        'JobStatus is null',
+      );
+    }
+    return JobStatus.values.firstWhere(
+      (e) => e.value == value,
+      orElse: () => throw FormatException(
+        'Invalid JobStatus: $value',
+      ),
+    );
+  }
 
   String toJson() {
     return value;

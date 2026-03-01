@@ -1,7 +1,7 @@
 import 'job_status.dart';
 import 'track.dart';
 import 'suno_model.dart';
-import 'vocal_gender.dart'
+import 'vocal_gender.dart';
 
 class Job {
   final String id;
