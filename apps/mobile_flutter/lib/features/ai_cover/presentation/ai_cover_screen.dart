@@ -1,29 +1,37 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/models/song.dart';
 import '../../../shared/theme/app_colors.dart';
 import '../../../shared/theme/app_typography.dart';
-import '../../../shared/widgets/bottom_nav.dart';
+import '../../../shared/widgets/app_background.dart';
+import '../../../shared/widgets/glass_card.dart';
+import '../../library/domain/library_controller.dart';
 
-class AiCoverScreen extends StatefulWidget {
+class AiCoverScreen extends ConsumerStatefulWidget {
   const AiCoverScreen({super.key});
 
   @override
-  State<AiCoverScreen> createState() => _AiCoverScreenState();
+  ConsumerState<AiCoverScreen> createState() => _AiCoverScreenState();
 }
 
-class _AiCoverScreenState extends State<AiCoverScreen> {
-  String? _selectedSongTitle;
+class _AiCoverScreenState extends ConsumerState<AiCoverScreen> {
+  Song? _selectedSong;
 
   void _openSongPicker() async {
-    final result = await showModalBottomSheet<String>(
+    final songs = ref.read(songsProvider).valueOrNull ?? [];
+
+    if (!mounted) return;
+
+    final result = await showModalBottomSheet<Song>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (_) => const _SongPickerSheet(),
+      builder: (_) => _SongPickerSheet(songs: songs),
     );
 
-    if (result != null && result.trim().isNotEmpty) {
-      setState(() => _selectedSongTitle = result.trim());
+    if (result != null) {
+      setState(() => _selectedSong = result);
     }
   }
 
@@ -33,53 +41,38 @@ class _AiCoverScreenState extends State<AiCoverScreen> {
       backgroundColor: Colors.transparent,
       body: Stack(
         children: [
-          const _Background(),
+          const AppBackground(),
           SafeArea(
-            child: Column(
-              children: [
-                const SizedBox(height: 10),
-                const Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 18),
-                  child: _TopLogo(),
-                ),
-                const SizedBox(height: 14),
-
-                Expanded(
-                  child: SingleChildScrollView(
-                    padding: const EdgeInsets.fromLTRB(18, 0, 18, 120),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        _SelectSongCard(
-                          selectedSongTitle: _selectedSongTitle,
-                          onStartCreating: _openSongPicker,
-                        ),
-                        const SizedBox(height: 18),
-
-                        const _SelectVoiceCard(),
-                        const SizedBox(height: 18),
-
-                        _GenerateButton(
-                          enabled: _selectedSongTitle != null,
-                          onTap: () {
-                            // TODO: тут потом будет реальный запрос "сделай cover"
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text(
-                                  _selectedSongTitle == null
-                                      ? 'Select a song first'
-                                      : 'Generate cover for "${_selectedSongTitle!}"',
-                                ),
+            bottom: false,
+            child: CustomScrollView(
+              slivers: [
+                SliverPadding(
+                  padding: const EdgeInsets.fromLTRB(18, 10, 18, 100),
+                  sliver: SliverList.list(
+                    children: [
+                      _SelectSongCard(
+                        selectedSong: _selectedSong,
+                        onStartCreating: _openSongPicker,
+                      ),
+                      const SizedBox(height: 18),
+                      const _SelectVoiceCard(),
+                      const SizedBox(height: 18),
+                      _GenerateButton(
+                        enabled: _selectedSong != null,
+                        onTap: () {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                'Generate cover for "${_selectedSong!.title}"',
                               ),
-                            );
-                          },
-                        ),
-                      ],
-                    ),
+                              behavior: SnackBarBehavior.floating,
+                            ),
+                          );
+                        },
+                      ),
+                    ],
                   ),
                 ),
-
-                const AppBottomNav(active: AppTab.aiCover),
               ],
             ),
           ),
@@ -89,93 +82,39 @@ class _AiCoverScreenState extends State<AiCoverScreen> {
   }
 }
 
-/// ---------- Background ----------
-
-class _Background extends StatelessWidget {
-  const _Background();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: const BoxDecoration(gradient: AppColors.backgroundGradient),
-      child: Container(
-        decoration: const BoxDecoration(
-          gradient: RadialGradient(
-            center: Alignment(0, 0.25),
-            radius: 0.85,
-            colors: [Color(0x40FFFFFF), Colors.transparent],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// ---------- Top logo ----------
-
-class _TopLogo extends StatelessWidget {
-  const _TopLogo();
-
-  @override
-  Widget build(BuildContext context) {
-    return const Align(
-      alignment: Alignment.centerLeft,
-      child: Text(
-        'PULSE',
-        style: TextStyle(
-          fontFamily: AppTypography.logoFamily,
-          fontSize: 28,
-          fontWeight: FontWeight.w400,
-          color: Colors.white,
-        ),
-      ),
-    );
-  }
-}
-
-/// ---------- Select song card ----------
+// ─── Select song card ────────────────────────────────────────────────────────
 
 class _SelectSongCard extends StatelessWidget {
-  final String? selectedSongTitle;
+  final Song? selectedSong;
   final VoidCallback onStartCreating;
 
   const _SelectSongCard({
-    required this.selectedSongTitle,
+    required this.selectedSong,
     required this.onStartCreating,
   });
 
   @override
   Widget build(BuildContext context) {
-    return _GlassCard(
-      radius: 22,
+    return GlassCard(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 14),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
             'Select Song from Library',
-            style: AppTypography.body.copyWith(
-              color: Colors.white.withOpacity(0.9),
-              fontSize: 14,
-            ),
+            style: AppTypography.body.copyWith(color: AppColors.white85),
           ),
           const SizedBox(height: 12),
-
-          if (selectedSongTitle == null) ...[
+          if (selectedSong == null) ...[
             Center(
               child: Container(
-                width: 62,
-                height: 62,
+                width: 62, height: 62,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: Colors.white.withOpacity(0.14),
-                  border: Border.all(color: Colors.white.withOpacity(0.10)),
+                  color: AppColors.chipIdle,
+                  border: Border.all(color: AppColors.white10, width: 0.5),
                 ),
-                child: const Icon(
-                  Icons.play_arrow_rounded,
-                  size: 36,
-                  color: Colors.white,
-                ),
+                child: const Icon(Icons.play_arrow_rounded, size: 36, color: Colors.white),
               ),
             ),
             const SizedBox(height: 12),
@@ -183,24 +122,13 @@ class _SelectSongCard extends StatelessWidget {
               child: Text(
                 'Create your first song and\nmake an AI Cover right now',
                 textAlign: TextAlign.center,
-                style: AppTypography.body.copyWith(
-                  fontSize: 13,
-                  color: Colors.white.withOpacity(0.75),
-                ),
+                style: AppTypography.body.copyWith(fontSize: 13, color: AppColors.white75),
               ),
             ),
             const SizedBox(height: 14),
-            Center(
-              child: _SmallButton(
-                label: 'Start Creating',
-                onTap: onStartCreating,
-              ),
-            ),
+            Center(child: _SmallButton(label: 'Start Creating', onTap: onStartCreating)),
           ] else ...[
-            _SelectedSongTile(
-              title: selectedSongTitle!,
-              onTap: onStartCreating, // можно тапом переоткрывать выбор
-            ),
+            _SelectedSongTile(title: selectedSong!.title, onTap: onStartCreating),
           ],
         ],
       ),
@@ -211,47 +139,20 @@ class _SelectSongCard extends StatelessWidget {
 class _SelectedSongTile extends StatelessWidget {
   final String title;
   final VoidCallback onTap;
-
-  const _SelectedSongTile({
-    required this.title,
-    required this.onTap,
-  });
+  const _SelectedSongTile({required this.title, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
-    return InkWell(
-      borderRadius: BorderRadius.circular(16),
+    return GestureDetector(
       onTap: onTap,
       child: Container(
-        height: 64,
-        padding: const EdgeInsets.symmetric(horizontal: 12),
-        decoration: BoxDecoration(
-          color: const Color(0x66000000),
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: Colors.white.withOpacity(0.08)),
-        ),
-        child: Row(
-          children: [
-            Container(
-              width: 42,
-              height: 42,
-              decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.18),
-                borderRadius: BorderRadius.circular(12),
-              ),
-            ),
-            const SizedBox(width: 14),
-            Expanded(
-              child: Text(
-                title,
-                style: AppTypography.body.copyWith(
-                  color: Colors.white,
-                  fontSize: 16,
-                ),
-              ),
-            ),
-          ],
-        ),
+        height: 64, padding: const EdgeInsets.symmetric(horizontal: 12),
+        decoration: BoxDecoration(borderRadius: BorderRadius.circular(16), color: const Color(0x44382060), border: Border.all(color: const Color(0x22FFFFFF), width: 0.5)),
+        child: Row(children: [
+          Container(width: 42, height: 42, decoration: BoxDecoration(color: AppColors.chipIdle, borderRadius: BorderRadius.circular(12))),
+          const SizedBox(width: 14),
+          Expanded(child: Text(title, style: AppTypography.body.copyWith(color: Colors.white, fontSize: 16))),
+        ]),
       ),
     );
   }
@@ -260,31 +161,22 @@ class _SelectedSongTile extends StatelessWidget {
 class _SmallButton extends StatelessWidget {
   final String label;
   final VoidCallback onTap;
-
   const _SmallButton({required this.label, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
-    return InkWell(
-      borderRadius: BorderRadius.circular(18),
+    return GestureDetector(
       onTap: onTap,
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 10),
-        decoration: BoxDecoration(
-          color: const Color(0x66000000),
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: Colors.white.withOpacity(0.08)),
-        ),
-        child: Text(
-          label,
-          style: AppTypography.button.copyWith(fontSize: 14),
-        ),
+        decoration: BoxDecoration(borderRadius: BorderRadius.circular(18), color: const Color(0x44382060), border: Border.all(color: const Color(0x22FFFFFF), width: 0.5)),
+        child: Text(label, style: AppTypography.button.copyWith(fontSize: 14)),
       ),
     );
   }
 }
 
-/// ---------- Select voice card ----------
+// ─── Select voice card ───────────────────────────────────────────────────────
 
 class _SelectVoiceCard extends StatelessWidget {
   const _SelectVoiceCard();
@@ -294,61 +186,29 @@ class _SelectVoiceCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
       decoration: BoxDecoration(
-        color: const Color(0xFF1A0033).withOpacity(0.78),
         borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: Colors.white.withOpacity(0.08)),
-        boxShadow: const [
-          BoxShadow(
-            offset: Offset(0, 12),
-            blurRadius: 30,
-            color: Color(0x33000000),
-          ),
-        ],
+        color: const Color(0x442A1060),
+        border: Border.all(color: const Color(0x22FFFFFF), width: 0.5),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            'Select Voice',
-            style: AppTypography.body.copyWith(
-              color: Colors.white.withOpacity(0.95),
-              fontSize: 14,
-            ),
-          ),
+          Text('Select Voice', style: AppTypography.body.copyWith(color: AppColors.white85)),
           const SizedBox(height: 10),
-          Row(
-            children: [
-              _Chip(label: 'My Voices', selected: true, onTap: () {}),
-            ],
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+            decoration: BoxDecoration(color: AppColors.chipIdle, borderRadius: BorderRadius.circular(16), border: Border.all(color: AppColors.white10, width: 0.5)),
+            child: Text('My Voices', style: AppTypography.body.copyWith(fontSize: 12, color: AppColors.white85)),
           ),
           const SizedBox(height: 12),
-
-          // карточка "Add your own voices"
           Container(
-            width: 110,
-            height: 120,
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.14),
-              borderRadius: BorderRadius.circular(18),
-              border: Border.all(color: Colors.white.withOpacity(0.10)),
-            ),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(Icons.volume_up_rounded,
-                    color: Colors.white.withOpacity(0.9), size: 30),
-                const SizedBox(height: 8),
-                Text(
-                  'Add your own\nvoices',
-                  textAlign: TextAlign.center,
-                  style: AppTypography.body.copyWith(
-                    fontSize: 11,
-                    color: Colors.white.withOpacity(0.85),
-                  ),
-                ),
-              ],
-            ),
+            width: 110, height: 120, padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(color: AppColors.chipIdle, borderRadius: BorderRadius.circular(18), border: Border.all(color: AppColors.white10, width: 0.5)),
+            child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+              const Icon(Icons.volume_up_rounded, color: AppColors.white85, size: 30),
+              const SizedBox(height: 8),
+              Text('Add your own\nvoices', textAlign: TextAlign.center, style: AppTypography.body.copyWith(fontSize: 11, color: AppColors.white85)),
+            ]),
           ),
         ],
       ),
@@ -356,66 +216,29 @@ class _SelectVoiceCard extends StatelessWidget {
   }
 }
 
-class _Chip extends StatelessWidget {
-  final String label;
-  final bool selected;
-  final VoidCallback onTap;
-
-  const _Chip({
-    required this.label,
-    required this.selected,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      borderRadius: BorderRadius.circular(16),
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-        decoration: BoxDecoration(
-          color: selected ? Colors.white.withOpacity(0.18) : Colors.white.withOpacity(0.10),
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: Colors.white.withOpacity(0.10)),
-        ),
-        child: Text(
-          label,
-          style: AppTypography.body.copyWith(
-            fontSize: 12,
-            color: Colors.white.withOpacity(0.95),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// ---------- Generate button ----------
+// ─── Generate button ─────────────────────────────────────────────────────────
 
 class _GenerateButton extends StatelessWidget {
   final bool enabled;
   final VoidCallback onTap;
-
   const _GenerateButton({required this.enabled, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
-    return InkWell(
-      borderRadius: BorderRadius.circular(22),
+    return GestureDetector(
       onTap: enabled ? onTap : null,
       child: Container(
-        height: 62,
+        height: 64,
         alignment: Alignment.center,
         decoration: BoxDecoration(
-          color: enabled ? const Color(0x66000000) : const Color(0x33000000),
           borderRadius: BorderRadius.circular(22),
-          border: Border.all(color: Colors.white.withOpacity(0.08)),
+          color: enabled ? const Color(0x33FFFFFF) : const Color(0x18FFFFFF),
+          border: Border.all(color: const Color(0x22FFFFFF), width: 0.5),
         ),
         child: Text(
           'Generate',
           style: AppTypography.button.copyWith(
-            color: enabled ? Colors.white : Colors.white.withOpacity(0.5),
+            color: enabled ? Colors.white : AppColors.white35,
             fontSize: 18,
           ),
         ),
@@ -424,61 +247,43 @@ class _GenerateButton extends StatelessWidget {
   }
 }
 
-/// ---------- Song picker sheet ----------
+// ─── Song picker sheet — data comes from provider, not hardcoded ─────────────
 
 class _SongPickerSheet extends StatelessWidget {
-  const _SongPickerSheet();
+  final List<Song> songs;
+  const _SongPickerSheet({required this.songs});
 
   @override
   Widget build(BuildContext context) {
-    // Мок: позже ты подставишь реальные песни из Library controller
-    final songs = const ['Untitled #1', 'Untitled #2'];
-
     return Padding(
-      padding: EdgeInsets.only(
-        left: 18,
-        right: 18,
-        bottom: 18 + MediaQuery.of(context).padding.bottom,
-        top: 80,
-      ),
+      padding: EdgeInsets.only(left: 18, right: 18, bottom: 18 + MediaQuery.of(context).padding.bottom, top: 80),
       child: Container(
         padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
         decoration: BoxDecoration(
-          color: const Color(0xFF1A0033).withOpacity(0.92),
+          color: AppColors.surfaceSheet,
           borderRadius: BorderRadius.circular(22),
-          border: Border.all(color: Colors.white.withOpacity(0.08)),
-          boxShadow: const [
-            BoxShadow(
-              offset: Offset(0, 18),
-              blurRadius: 44,
-              color: Color(0x66000000),
-            )
-          ],
+          border: Border.all(color: AppColors.white10, width: 0.5),
+          boxShadow: const [BoxShadow(offset: Offset(0, 18), blurRadius: 44, color: Color(0x66000000))],
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text(
-              'Select Song',
-              style: AppTypography.title.copyWith(
-                color: Colors.white,
-                fontSize: 18,
-              ),
-            ),
+            Text('Select Song', style: AppTypography.title.copyWith(fontSize: 18)),
             const SizedBox(height: 12),
-
-            for (final s in songs) ...[
-              _PickerSongTile(
-                title: s,
-                onTap: () => Navigator.of(context).pop(s),
-              ),
-              const SizedBox(height: 10),
-            ],
-
-            _SmallButton(
-              label: 'Cancel',
-              onTap: () => Navigator.of(context).pop(),
-            ),
+            if (songs.isEmpty)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                child: Text(
+                  'No songs yet. Create one first!',
+                  style: AppTypography.body.copyWith(color: AppColors.white60),
+                ),
+              )
+            else
+              for (final song in songs) ...[
+                _PickerSongTile(title: song.title, onTap: () => Navigator.of(context).pop(song)),
+                const SizedBox(height: 10),
+              ],
+            _SmallButton(label: 'Cancel', onTap: () => Navigator.of(context).pop()),
           ],
         ),
       ),
@@ -489,89 +294,21 @@ class _SongPickerSheet extends StatelessWidget {
 class _PickerSongTile extends StatelessWidget {
   final String title;
   final VoidCallback onTap;
-
   const _PickerSongTile({required this.title, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
-    return InkWell(
-      borderRadius: BorderRadius.circular(16),
+    return GestureDetector(
       onTap: onTap,
       child: Container(
-        height: 64,
-        padding: const EdgeInsets.symmetric(horizontal: 12),
-        decoration: BoxDecoration(
-          color: const Color(0x66000000),
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: Colors.white.withOpacity(0.08)),
-        ),
-        child: Row(
-          children: [
-            Container(
-              width: 42,
-              height: 42,
-              decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.18),
-                borderRadius: BorderRadius.circular(12),
-              ),
-            ),
-            const SizedBox(width: 14),
-            Expanded(
-              child: Text(
-                title,
-                style: AppTypography.body.copyWith(
-                  color: Colors.white,
-                  fontSize: 16,
-                ),
-              ),
-            ),
-          ],
-        ),
+        height: 64, padding: const EdgeInsets.symmetric(horizontal: 12),
+        decoration: BoxDecoration(borderRadius: BorderRadius.circular(16), color: const Color(0x44382060), border: Border.all(color: const Color(0x22FFFFFF), width: 0.5)),
+        child: Row(children: [
+          Container(width: 42, height: 42, decoration: BoxDecoration(color: AppColors.chipIdle, borderRadius: BorderRadius.circular(12))),
+          const SizedBox(width: 14),
+          Expanded(child: Text(title, style: AppTypography.body.copyWith(color: Colors.white, fontSize: 16))),
+        ]),
       ),
-    );
-  }
-}
-
-/// ---------- Glass primitive for top card ----------
-
-class _GlassCard extends StatelessWidget {
-  final Widget child;
-  final double radius;
-  final EdgeInsets padding;
-
-  const _GlassCard({
-    required this.child,
-    required this.radius,
-    required this.padding,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: padding,
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(radius),
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            Colors.white.withOpacity(0.18),
-            Colors.white.withOpacity(0.08),
-          ],
-        ),
-        border: Border.all(
-          color: Colors.white.withOpacity(0.18),
-          width: 1,
-        ),
-        boxShadow: const [
-          BoxShadow(
-            offset: Offset(0, 10),
-            blurRadius: 28,
-            color: Color(0x33000000),
-          ),
-        ],
-      ),
-      child: child,
     );
   }
 }

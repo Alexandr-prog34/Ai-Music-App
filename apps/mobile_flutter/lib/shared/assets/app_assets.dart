@@ -1,3 +1,7 @@
+/// Centralised asset paths.
+///
+/// Every image reference goes through this class so that a typo in a path
+/// is caught at compile-time, not at runtime.
 class AppAssets {
   AppAssets._();
 

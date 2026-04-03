@@ -1,126 +1,160 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../shared/assets/app_assets.dart';
 import '../../../shared/theme/app_colors.dart';
 import '../../../shared/theme/app_typography.dart';
+import '../../../shared/widgets/app_background.dart';
 import '../../../shared/widgets/app_icon.dart';
-import '../../../shared/widgets/bottom_nav.dart';
+import '../../../shared/widgets/glass_card.dart';
 import '../../player/presentation/player_screen.dart';
+import '../domain/library_controller.dart';
 
-class LibraryScreen extends StatefulWidget {
+class LibraryScreen extends ConsumerStatefulWidget {
   const LibraryScreen({super.key});
 
   @override
-  State<LibraryScreen> createState() => _LibraryScreenState();
+  ConsumerState<LibraryScreen> createState() => _LibraryScreenState();
 }
 
-class _LibraryScreenState extends State<LibraryScreen> {
-  final _searchController = TextEditingController();
+class _LibraryScreenState extends ConsumerState<LibraryScreen> {
+  final _searchCtrl = TextEditingController();
 
   @override
   void dispose() {
-    _searchController.dispose();
+    _searchCtrl.dispose();
     super.dispose();
   }
-  void _showNewPlaylistDialog(BuildContext context) {
-    showDialog(
+
+  Future<void> _showNewPlaylistDialog() async {
+    final name = await showDialog<String>(
       context: context,
-      barrierDismissible: true,
-      barrierColor: Colors.black.withOpacity(0.35),
+      barrierColor: Colors.black38,
       builder: (_) => const _NewPlaylistDialog(),
     );
+    if (name != null && name.isNotEmpty) {
+      ref.read(playlistsProvider.notifier).create(name);
+    }
   }
+
   @override
   Widget build(BuildContext context) {
+    final songsAsync = ref.watch(songsProvider);
+
     return Scaffold(
-      // Важно: чтобы градиент был фоном всего
       backgroundColor: Colors.transparent,
       body: Stack(
         children: [
-          const _Background(),
-
+          const AppBackground(),
           SafeArea(
-            child: Column(
-              children: [
-                const SizedBox(height: 10),
-                const Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 18),
-                  child: _TopBar(),
-                ),
-                const SizedBox(height: 14),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 18),
-                  child: _SearchField(controller: _searchController),
-                ),
-                const SizedBox(height: 18),
+            bottom: false,
+            child: CustomScrollView(
+              slivers: [
+                SliverPadding(
+                  padding: const EdgeInsets.fromLTRB(18, 10, 18, 100),
+                  sliver: SliverList.list(
+                    children: [
+                      _SearchField(controller: _searchCtrl),
+                      const SizedBox(height: 18),
+                      const Text('My Playlists', style: AppTypography.title),
+                      const SizedBox(height: 12),
+                      _PlaylistRow(onNewPlaylist: _showNewPlaylistDialog),
+                      const SizedBox(height: 22),
+                      const Text('My Songs', style: AppTypography.title),
+                      const SizedBox(height: 12),
 
-                Expanded(
-                  child: SingleChildScrollView(
-                    padding: const EdgeInsets.only(
-                      left: 18,
-                      right: 18,
-                      bottom: 120,
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text('My Playlists', style: AppTypography.title),
-                        const SizedBox(height: 12),
-
-                        Row(
-                          children: [
-                            Expanded(
-                              child: _PlaylistCard(
-                                iconAsset: AppAssets.libraryFavorites,
-                                label: 'My Favourites',
-                                onTap: () {}
-                              ),
-                            ),
-                            const SizedBox(width: 14),
-                            Expanded(
-                              child: _PlaylistCard(
-                                iconAsset: AppAssets.libraryAddPlaylist,
-                                label: 'New Playlist',
-                                onTap: () => _showNewPlaylistDialog(context),
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            _ArrowButton(onTap: () {}),
-                          ],
+                      // Proper AsyncValue handling.
+                      songsAsync.when(
+                        loading: () => const Center(
+                          child: Padding(
+                            padding: EdgeInsets.all(32),
+                            child: CircularProgressIndicator(color: Colors.white),
+                          ),
                         ),
-
-                        const SizedBox(height: 22),
-                        const Text('My Songs', style: AppTypography.title),
-                        const SizedBox(height: 12),
-
-                        _SongTile(
-                          title: 'Untitled #1',
-                          onTap: () {
-                            Navigator.of(context).push(
-                              MaterialPageRoute(
-                                builder: (_) => const PlayerScreen(title: 'Untitled #1'),
+                        error: (err, _) => _ErrorCard(
+                          message: 'Failed to load songs',
+                          onRetry: () => ref.invalidate(songsProvider),
+                        ),
+                        data: (songs) {
+                          if (songs.isEmpty) {
+                            return Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 32),
+                              child: Center(
+                                child: Text(
+                                  'No songs yet.\nGo to CREATE to make your first track!',
+                                  textAlign: TextAlign.center,
+                                  style: AppTypography.body.copyWith(
+                                    color: AppColors.white60,
+                                  ),
+                                ),
                               ),
                             );
-                          },
-                        ),
-                        const SizedBox(height: 12),
-                        _SongTile(
-                          title: 'Untitled #2',
-                          onTap: () {
-                            Navigator.of(context).push(
-                              MaterialPageRoute(
-                                builder: (_) => const PlayerScreen(title: 'Untitled #2'),
-                              ),
-                            );
-                          },
-                        ),
-                      ],
-                    ),
+                          }
+
+                          return Column(
+                            children: [
+                              for (int i = 0; i < songs.length; i++) ...[
+                                if (i > 0) const SizedBox(height: 12),
+                                _SongTile(
+                                  title: songs[i].title,
+                                  onTap: () => _openPlayer(songs[i].id, songs[i].title),
+                                ),
+                              ],
+                            ],
+                          );
+                        },
+                      ),
+                    ],
                   ),
                 ),
-
-                const AppBottomNav(active: AppTab.library),
               ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _openPlayer(String id, String title) {
+    Navigator.of(context).push(
+      PageRouteBuilder(
+        pageBuilder: (_, __, ___) => PlayerScreen(songId: id, title: title),
+        transitionDuration: const Duration(milliseconds: 300),
+        reverseTransitionDuration: const Duration(milliseconds: 200),
+        transitionsBuilder: (_, animation, __, child) {
+          return FadeTransition(opacity: animation, child: child);
+        },
+      ),
+    );
+  }
+}
+
+// ─── Error card ──────────────────────────────────────────────────────────────
+
+class _ErrorCard extends StatelessWidget {
+  final String message;
+  final VoidCallback onRetry;
+  const _ErrorCard({required this.message, required this.onRetry});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 24),
+      child: Column(
+        children: [
+          const Icon(Icons.error_outline_rounded, color: AppColors.error, size: 36),
+          const SizedBox(height: 8),
+          Text(message, style: AppTypography.body.copyWith(color: AppColors.error)),
+          const SizedBox(height: 12),
+          GestureDetector(
+            onTap: onRetry,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+              decoration: BoxDecoration(
+                color: AppColors.chipIdle,
+                borderRadius: BorderRadius.circular(18),
+              ),
+              child: const Text('Retry', style: AppTypography.label),
             ),
           ),
         ],
@@ -129,67 +163,15 @@ class _LibraryScreenState extends State<LibraryScreen> {
   }
 }
 
-/// ---------- Background ----------
-
-class _Background extends StatelessWidget {
-  const _Background();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: const BoxDecoration(
-        gradient: AppColors.backgroundGradient,
-      ),
-      child: Container(
-        // легкий glow как в макете
-        decoration: const BoxDecoration(
-          gradient: RadialGradient(
-            center: Alignment(0, 0.25),
-            radius: 0.85,
-            colors: [
-              Color(0x40FFFFFF),
-              Colors.transparent,
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// ---------- Top bar ----------
-
-class _TopBar extends StatelessWidget {
-  const _TopBar();
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: const [
-        Text(
-          'PULSE',
-          style: TextStyle(
-            fontFamily: AppTypography.logoFamily,
-            fontSize: 28,
-            fontWeight: FontWeight.w400,
-            color: Colors.white,
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-/// ---------- Search ----------
+// ─── Search ──────────────────────────────────────────────────────────────────
 
 class _SearchField extends StatelessWidget {
   final TextEditingController controller;
-
   const _SearchField({required this.controller});
 
   @override
   Widget build(BuildContext context) {
-    return _Glass(
+    return GlassCard(
       radius: 28,
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
       child: Row(
@@ -198,10 +180,10 @@ class _SearchField extends StatelessWidget {
             child: TextField(
               controller: controller,
               style: AppTypography.body.copyWith(color: Colors.white),
-              decoration: const InputDecoration(
+              decoration: InputDecoration(
                 border: InputBorder.none,
                 hintText: 'Search song, playlist...',
-                hintStyle: AppTypography.body,
+                hintStyle: AppTypography.body.copyWith(color: AppColors.white40),
               ),
             ),
           ),
@@ -213,183 +195,98 @@ class _SearchField extends StatelessWidget {
   }
 }
 
-/// ---------- Playlist cards ----------
+// ─── Playlist row ────────────────────────────────────────────────────────────
+
+class _PlaylistRow extends StatelessWidget {
+  final VoidCallback onNewPlaylist;
+  const _PlaylistRow({required this.onNewPlaylist});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Expanded(child: _PlaylistCard(iconAsset: AppAssets.libraryFavorites, label: 'My Favourites', onTap: () {})),
+        const SizedBox(width: 14),
+        Expanded(child: _PlaylistCard(iconAsset: AppAssets.libraryAddPlaylist, label: 'New Playlist', onTap: onNewPlaylist)),
+        const SizedBox(width: 12),
+        GestureDetector(onTap: () {}, child: const Padding(padding: EdgeInsets.symmetric(horizontal: 4, vertical: 10), child: AppIcon(AppAssets.libraryArrow, size: 28))),
+      ],
+    );
+  }
+}
 
 class _PlaylistCard extends StatelessWidget {
   final String iconAsset;
   final String label;
   final VoidCallback onTap;
-
-  const _PlaylistCard({
-    required this.iconAsset,
-    required this.label,
-    required this.onTap,
-  });
+  const _PlaylistCard({required this.iconAsset, required this.label, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
-    return InkWell(
-      borderRadius: BorderRadius.circular(22),
+    return GestureDetector(
       onTap: onTap,
-      child: _Glass(
-        radius: 22,
+      child: GlassCard(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            AppIcon(iconAsset, size: 46),
-            const SizedBox(height: 10),
-            Text(
-              label,
-              textAlign: TextAlign.center,
-              style: AppTypography.label.copyWith(
-                color: Colors.white,
-                fontSize: 12,
-              ),
-            ),
-          ],
-        ),
+        child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+          AppIcon(iconAsset, size: 46),
+          const SizedBox(height: 10),
+          Text(label, textAlign: TextAlign.center, style: AppTypography.label.copyWith(fontSize: 12)),
+        ]),
       ),
     );
   }
 }
 
-class _ArrowButton extends StatelessWidget {
-  final VoidCallback onTap;
-
-  const _ArrowButton({required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      borderRadius: BorderRadius.circular(18),
-      onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 10),
-        child: AppIcon(AppAssets.libraryArrow, size: 28),
-      ),
-    );
-  }
-}
-
-/// ---------- Songs ----------
+// ─── Song tile ───────────────────────────────────────────────────────────────
 
 class _SongTile extends StatelessWidget {
   final String title;
   final VoidCallback onTap;
-
-  const _SongTile({
-    required this.title,
-    required this.onTap,
-  });
+  const _SongTile({required this.title, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
-    return InkWell(
-      borderRadius: BorderRadius.circular(18),
+    return GestureDetector(
       onTap: onTap,
       child: Container(
-        height: 64,
+        height: 68,
         decoration: BoxDecoration(
-          color: const Color(0x66000000),
           borderRadius: BorderRadius.circular(18),
-          boxShadow: const [
-            BoxShadow(
-              offset: Offset(0, 6),
-              blurRadius: 18,
-              color: Color(0x33000000),
-            )
-          ],
+          color: const Color(0x44382060),
+          border: Border.all(color: const Color(0x22FFFFFF), width: 0.5),
         ),
-        child: Row(
-          children: [
-            const SizedBox(width: 12),
-            Container(
-              width: 42,
-              height: 42,
-              decoration: BoxDecoration(
-                color: const Color(0x55FFFFFF),
-                borderRadius: BorderRadius.circular(12),
-              ),
+        child: Row(children: [
+          const SizedBox(width: 14),
+          Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              color: AppColors.white10,
+              borderRadius: BorderRadius.circular(12),
             ),
-            const SizedBox(width: 14),
-            Expanded(
-              child: Text(
-                title,
-                style: AppTypography.body.copyWith(
-                  color: Colors.white,
-                  fontSize: 16,
-                ),
-              ),
-            ),
-            const SizedBox(width: 12),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-
-/// ---------- Glass primitive ----------
-
-class _Glass extends StatelessWidget {
-  final Widget child;
-  final double radius;
-  final EdgeInsets padding;
-
-  const _Glass({
-    required this.child,
-    required this.radius,
-    required this.padding,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: padding,
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(radius),
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            Colors.white.withOpacity(0.18),
-            Colors.white.withOpacity(0.08),
-          ],
-        ),
-        border: Border.all(
-          color: Colors.white.withOpacity(0.18),
-          width: 1,
-        ),
-        boxShadow: const [
-          BoxShadow(
-            offset: Offset(0, 10),
-            blurRadius: 28,
-            color: Color(0x33000000),
           ),
-        ],
+          const SizedBox(width: 14),
+          Expanded(child: Text(title, style: AppTypography.body.copyWith(color: Colors.white, fontSize: 16))),
+          const SizedBox(width: 14),
+        ]),
       ),
-      child: child,
     );
   }
 }
+
+// ─── New playlist dialog ─────────────────────────────────────────────────────
 
 class _NewPlaylistDialog extends StatefulWidget {
   const _NewPlaylistDialog();
-
   @override
   State<_NewPlaylistDialog> createState() => _NewPlaylistDialogState();
 }
 
 class _NewPlaylistDialogState extends State<_NewPlaylistDialog> {
-  final _controller = TextEditingController();
+  final _ctrl = TextEditingController();
 
   @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
+  void dispose() { _ctrl.dispose(); super.dispose(); }
 
   @override
   Widget build(BuildContext context) {
@@ -399,75 +296,33 @@ class _NewPlaylistDialogState extends State<_NewPlaylistDialog> {
       child: Container(
         padding: const EdgeInsets.fromLTRB(18, 18, 18, 16),
         decoration: BoxDecoration(
-          color: const Color(0xFF1A0033).withOpacity(0.92),
+          color: AppColors.surfaceSheet,
           borderRadius: BorderRadius.circular(22),
-          boxShadow: const [
-            BoxShadow(
-              offset: Offset(0, 16),
-              blurRadius: 40,
-              color: Color(0x66000000),
-            ),
-          ],
-          border: Border.all(
-            color: Colors.white.withOpacity(0.08),
-            width: 1,
-          ),
+          border: Border.all(color: AppColors.white10, width: 0.5),
+          boxShadow: const [BoxShadow(offset: Offset(0, 16), blurRadius: 40, color: Color(0x66000000))],
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Text(
-              'New Playlist',
-              style: TextStyle(
-                fontFamily: AppTypography.fontFamily,
-                fontSize: 22,
-                color: Colors.white,
-              ),
-            ),
+            Text('New Playlist', style: AppTypography.title.copyWith(fontSize: 22)),
             const SizedBox(height: 16),
-
-            Align(
-              alignment: Alignment.centerLeft,
-              child: Text(
-                'Playlist Name',
-                style: AppTypography.body.copyWith(
-                  color: Colors.white.withOpacity(0.9),
-                  fontSize: 14,
-                ),
-              ),
-            ),
+            Align(alignment: Alignment.centerLeft, child: Text('Playlist Name', style: AppTypography.body.copyWith(color: AppColors.white85))),
             const SizedBox(height: 8),
-
-            _Input(
-              controller: _controller,
-              hint: 'Type here...',
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14),
+              decoration: BoxDecoration(color: AppColors.surfaceDim, borderRadius: BorderRadius.circular(14), border: Border.all(color: AppColors.white10, width: 0.5)),
+              child: TextField(
+                controller: _ctrl,
+                style: AppTypography.body.copyWith(color: Colors.white),
+                decoration: InputDecoration(border: InputBorder.none, hintText: 'Type here...', hintStyle: AppTypography.body.copyWith(color: AppColors.white35)),
+              ),
             ),
-
             const SizedBox(height: 16),
-
-            Row(
-              children: [
-                Expanded(
-                  child: _DialogButton(
-                    label: 'Cancel',
-                    filled: false,
-                    onTap: () => Navigator.of(context).pop(),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: _DialogButton(
-                    label: 'Create',
-                    filled: true,
-                    onTap: () {
-                      final name = _controller.text.trim();
-                      // TODO: тут потом вызовешь controller/cubit: createPlaylist(name)
-                      Navigator.of(context).pop(name.isEmpty ? null : name);
-                    },
-                  ),
-                ),
-              ],
-            ),
+            Row(children: [
+              Expanded(child: _DialogBtn(label: 'Cancel', filled: false, onTap: () => Navigator.of(context).pop())),
+              const SizedBox(width: 12),
+              Expanded(child: _DialogBtn(label: 'Create', filled: true, onTap: () => Navigator.of(context).pop(_ctrl.text.trim()))),
+            ]),
           ],
         ),
       ),
@@ -475,84 +330,22 @@ class _NewPlaylistDialogState extends State<_NewPlaylistDialog> {
   }
 }
 
-class _Input extends StatelessWidget {
-  final TextEditingController controller;
-  final String hint;
-
-  const _Input({
-    required this.controller,
-    required this.hint,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: const Color(0xFF2A004F).withOpacity(0.85),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(
-          color: Colors.white.withOpacity(0.08),
-          width: 1,
-        ),
-      ),
-      padding: const EdgeInsets.symmetric(horizontal: 14),
-      child: TextField(
-        controller: controller,
-        style: AppTypography.body.copyWith(color: Colors.white, fontSize: 14),
-        decoration: InputDecoration(
-          border: InputBorder.none,
-          hintText: hint,
-          hintStyle: AppTypography.body.copyWith(
-            color: Colors.white.withOpacity(0.35),
-            fontSize: 14,
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _DialogButton extends StatelessWidget {
+class _DialogBtn extends StatelessWidget {
   final String label;
   final bool filled;
   final VoidCallback onTap;
-
-  const _DialogButton({
-    required this.label,
-    required this.filled,
-    required this.onTap,
-  });
+  const _DialogBtn({required this.label, required this.filled, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
-    final bg = filled
-        ? const Color(0xFFB79BFF).withOpacity(0.8)
-        : const Color(0xFF2A004F).withOpacity(0.9);
-
-    final fg = filled ? const Color(0xFF1A0033) : Colors.white;
-
-    return InkWell(
-      borderRadius: BorderRadius.circular(14),
+    final bg = filled ? const Color(0xCCB79BFF) : AppColors.surfaceSheet;
+    final fg = filled ? AppColors.surface : Colors.white;
+    return GestureDetector(
       onTap: onTap,
       child: Container(
-        height: 46,
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          color: bg,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(
-            color: Colors.white.withOpacity(filled ? 0.0 : 0.10),
-            width: 1,
-          ),
-        ),
-        child: Text(
-          label,
-          style: TextStyle(
-            fontFamily: AppTypography.fontFamily,
-            fontSize: 16,
-            color: fg,
-          ),
-        ),
+        height: 46, alignment: Alignment.center,
+        decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(14), border: Border.all(color: filled ? Colors.transparent : AppColors.white10, width: 0.5)),
+        child: Text(label, style: AppTypography.label.copyWith(color: fg, fontSize: 16)),
       ),
     );
   }

@@ -33,6 +33,7 @@ dev_dependencies:
     sdk: flutter
 
   flutter_lints: ^4.0.0
+  flutter_launcher_icons: ^0.14.4
 
   build_runner: ^2.4.12
   freezed: ^2.5.7
@@ -52,3 +53,21 @@ flutter:
     - family: Monoton
       fonts:
         - asset: assets/fonts/Monoton-Regular.ttf
+
+    - family: Jura
+      fonts:
+        - asset: assets/fonts/Jura-Regular.ttf
+
+    - family: Faustina
+      fonts:
+        - asset: assets/fonts/Faustina-Regular.ttf
+
+    - family: FredokaOne
+      fonts:
+        - asset: assets/fonts/FredokaOne-Regular.ttf
+
+flutter_launcher_icons:
+  android: true
+  ios: true
+  image_path: assets/icons/icon.png
+  remove_alpha_ios: true

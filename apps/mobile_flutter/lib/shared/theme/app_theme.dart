@@ -4,6 +4,8 @@ import 'app_colors.dart';
 import 'app_typography.dart';
 
 class AppTheme {
+  AppTheme._();
+
   static ThemeData dark() {
     final colorScheme = const ColorScheme.dark().copyWith(
       primary: AppColors.primary,
@@ -16,13 +18,13 @@ class AppTheme {
       useMaterial3: true,
       brightness: Brightness.dark,
       colorScheme: colorScheme,
-      scaffoldBackgroundColor: AppColors.background,
+      scaffoldBackgroundColor: AppColors.surface,
       fontFamily: AppTypography.fontFamily,
       textTheme: ThemeData.dark().textTheme.apply(
-        fontFamily: AppTypography.fontFamily,
-        bodyColor: Colors.white,
-        displayColor: Colors.white,
-      ),
+            fontFamily: AppTypography.fontFamily,
+            bodyColor: Colors.white,
+            displayColor: Colors.white,
+          ),
       appBarTheme: const AppBarTheme(
         backgroundColor: Colors.transparent,
         elevation: 0,
