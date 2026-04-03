@@ -17,7 +17,7 @@ type Track struct {
 	Title string
 	Tags  *string
 
-	DurationSec float64
+	Duration time.Duration
 
 	// Координаты объекта в MinIO/S3.
 	// Это то, что хранится в БД и не протухает.
@@ -38,6 +38,7 @@ type Track struct {
 	IsFavorite bool
 
 	CreatedAt time.Time
+	UpdatedAt time.Time
 }
 
 func (t Track) Validate() error {
@@ -60,17 +61,5 @@ func (t Track) Validate() error {
 		return InvalidInput(ErrTrackAudioStorageRequired)
 	}
 
-	return nil
-}
-
-// ValidateForResponse — строгая валидация для того, что отдаём клиенту.
-// (Например, перед маппингом в DTO.)
-func (t Track) ValidateForResponse() error {
-	if err := t.Validate(); err != nil {
-		return err
-	}
-	if strings.TrimSpace(t.AudioURL) == "" {
-		return InvalidInput(ErrTrackAudioURLRequired)
-	}
 	return nil
 }

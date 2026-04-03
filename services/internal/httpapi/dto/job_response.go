@@ -53,7 +53,7 @@ func NewTrack(t domain.Track) Track {
 		Title:       t.Title,
 		Tags:        t.Tags,
 
-		DurationSec: t.DurationSec,
+		DurationSec: t.Duration.Seconds(),
 
 		AudioURL:  t.AudioURL,
 		StreamURL: t.StreamURL,

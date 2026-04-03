@@ -1,5 +1,8 @@
 package postgres
 
+const trackColumns = "id, job_id, suno_audio_id, title, tags, duration_sec, audio_bucket, audio_key, image_bucket, image_key, is_favorite, created_at, updated_at"
+const trackColumnsT = "t.id, t.job_id, t.suno_audio_id, t.title, t.tags, t.duration_sec, t.audio_bucket, t.audio_key, t.image_bucket, t.image_key, t.is_favorite, t.created_at, t.updated_at"
+
 const qTrackUpsert = `
 INSERT INTO tracks (
   id, job_id,
@@ -18,10 +21,13 @@ SET
 
   -- не затираем существующие значения NULL-ом
   audio_bucket = CASE
-    WHEN EXCLUDED.audio_key IS NULL THEN tracks.audio_bucket
-    ELSE EXCLUDED.audio_bucket
+    WHEN EXCLUDED.audio_key IS NOT NULL THEN EXCLUDED.audio_bucket
+    ELSE tracks.audio_bucket
   END,
-  audio_key = COALESCE(EXCLUDED.audio_key, tracks.audio_key),
+  audio_key = CASE
+    WHEN EXCLUDED.audio_key IS NOT NULL THEN EXCLUDED.audio_key
+    ELSE tracks.audio_key
+  END,
 
   image_bucket = CASE
     WHEN EXCLUDED.image_key IS NULL THEN tracks.image_bucket
@@ -29,5 +35,20 @@ SET
   END,
   image_key = COALESCE(EXCLUDED.image_key, tracks.image_key)
 
-RETURNING id;
+RETURNING ` + trackColumns + `;
+`
+
+const qTrackGet = "SELECT " + trackColumns + " FROM tracks WHERE id = $1;"
+
+const qTrackDelete = `
+DELETE FROM tracks t
+USING jobs j
+WHERE t.id = $1 AND t.job_id = j.id AND j.user_id = $2;
+`
+
+const qTrackSetFavorite = `
+UPDATE tracks t
+SET is_favorite = $3
+FROM jobs j
+WHERE t.id = $1 AND t.job_id = j.id AND j.user_id = $2;
 `

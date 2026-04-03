@@ -3,17 +3,21 @@ package postgres
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
+	"time"
 
 	"github.com/AI-Music-App001/Ai-Music-Generator/services/internal/domain"
+	sq "github.com/Masterminds/squirrel"
 	"github.com/google/uuid"
+	"github.com/jmoiron/sqlx"
 )
 
 type TrackRepo struct {
-	db *sql.DB
+	db *sqlx.DB
 }
 
-func NewTrackRepo(db *sql.DB) *TrackRepo { return &TrackRepo{db: db} }
+func NewTrackRepo(db *sql.DB) *TrackRepo { return &TrackRepo{db: sqlx.NewDb(db, "pgx")} }
 
 func scanTrack(s rowScanner) (domain.Track, error) {
 	var t domain.Track
@@ -24,16 +28,19 @@ func scanTrack(s rowScanner) (domain.Track, error) {
 	var audioKey sql.NullString
 	var imageBucket sql.NullString
 	var imageKey sql.NullString
+	var durationSec float64
 
 	err := s.Scan(
-		&t.ID, &t.JobID, &t.SunoAudioID, &t.Title, &tags, &t.DurationSec,
+		&t.ID, &t.JobID, &t.SunoAudioID, &t.Title, &tags, &durationSec,
 		&audioBucket, &audioKey,
 		&imageBucket, &imageKey,
-		&t.IsFavorite, &t.CreatedAt,
+		&t.IsFavorite, &t.CreatedAt, &t.UpdatedAt,
 	)
 	if err != nil {
-		return domain.Track{}, err
+		return domain.Track{}, fmt.Errorf("scan track: %w", err)
 	}
+
+	t.Duration = time.Duration(durationSec * float64(time.Second))
 
 	if tags.Valid {
 		v := tags.String
@@ -75,72 +82,84 @@ func (r *TrackRepo) CreateTrack(ctx context.Context, track domain.Track) (domain
 		}
 	}
 
-	var id uuid.UUID
-	if err := r.db.QueryRowContext(ctx, qTrackUpsert,
+	row := r.db.QueryRowxContext(ctx, qTrackUpsert,
 		track.ID, track.JobID,
 		track.SunoAudioID, track.Title, tags,
-		track.DurationSec,
+		track.Duration.Seconds(),
 		track.AudioBucket, track.AudioKey,
 		imgBucket, imgKey,
 		track.IsFavorite,
-	).Scan(&id); err != nil {
-		return domain.Track{}, err
+	)
+	out, err := scanTrack(row)
+	if err != nil {
+		return domain.Track{}, fmt.Errorf("create track: %w", err)
 	}
 
-	return r.GetTrack(ctx, id)
+	return out, nil
 }
 
 func (r *TrackRepo) GetTrack(ctx context.Context, id uuid.UUID) (domain.Track, error) {
-	const q = `
-SELECT
-  id, job_id, suno_audio_id, title, tags, duration_sec,
-  audio_bucket, audio_key, image_bucket, image_key,
-  is_favorite, created_at
-FROM tracks
-WHERE id = $1;
-`
-	row := r.db.QueryRowContext(ctx, q, id)
+	row := r.db.QueryRowxContext(ctx, qTrackGet, id)
 	t, err := scanTrack(row)
-	if err == sql.ErrNoRows {
+	if errors.Is(err, sql.ErrNoRows) {
 		return domain.Track{}, fmt.Errorf("%w", domain.ErrTrackNotFound)
 	}
-	return t, err
+	if err != nil {
+		return domain.Track{}, fmt.Errorf("get track: %w", err)
+	}
+	return t, nil
 }
 
 // ВНИМАНИЕ: как и с jobs — ListTracks принимает deviceID (installID) из ports,
 // значит фильтруем через JOIN users.install_id
 func (r *TrackRepo) ListTracks(ctx context.Context, userID uuid.UUID, favorite *bool, limit, offset int) ([]domain.Track, int, error) {
-	where := ` WHERE j.user_id = $1 `
-	args := []any{userID}
-
-	if favorite != nil {
-		where += ` AND t.is_favorite = $2 `
-		args = append(args, *favorite)
+	const maxLimit = 100
+	if limit <= 0 || limit > maxLimit {
+		limit = maxLimit
+	}
+	if offset < 0 {
+		offset = 0
 	}
 
-	countSQL := `SELECT COUNT(*) FROM tracks t JOIN jobs j ON j.id=t.job_id` + where
+	sb := sq.StatementBuilder.PlaceholderFormat(sq.Dollar)
+
+	countQ := sb.Select("COUNT(*)").
+		From("tracks t").
+		Join("jobs j ON j.id = t.job_id").
+		Where(sq.Eq{"j.user_id": userID})
+	if favorite != nil {
+		countQ = countQ.Where(sq.Eq{"t.is_favorite": *favorite})
+	}
+
+	countSQL, args, err := countQ.ToSql()
+	if err != nil {
+		return nil, 0, fmt.Errorf("build count query: %w", err)
+	}
 
 	var total int
-	if err := r.db.QueryRowContext(ctx, countSQL, args...).Scan(&total); err != nil {
-		return nil, 0, err
+	if err := r.db.QueryRowxContext(ctx, countSQL, args...).Scan(&total); err != nil {
+		return nil, 0, fmt.Errorf("count tracks: %w", err)
 	}
 
-	selectSQL := `
-SELECT
-  t.id, t.job_id, t.suno_audio_id, t.title, t.tags, t.duration_sec,
-  t.audio_bucket, t.audio_key, t.image_bucket, t.image_key,
-  t.is_favorite, t.created_at
-FROM tracks t
-JOIN jobs j ON j.id = t.job_id
-` + where + `
-ORDER BY t.created_at DESC
-LIMIT $` + fmt.Sprint(len(args)+1) + ` OFFSET $` + fmt.Sprint(len(args)+2)
+	listQ := sb.Select(trackColumnsT).
+		From("tracks t").
+		Join("jobs j ON j.id = t.job_id").
+		Where(sq.Eq{"j.user_id": userID}).
+		OrderBy("t.created_at DESC").
+		Limit(uint64(limit)).
+		Offset(uint64(offset))
+	if favorite != nil {
+		listQ = listQ.Where(sq.Eq{"t.is_favorite": *favorite})
+	}
 
-	args = append(args, limit, offset)
-
-	rows, err := r.db.QueryContext(ctx, selectSQL, args...)
+	selectSQL, args, err := listQ.ToSql()
 	if err != nil {
-		return nil, 0, err
+		return nil, 0, fmt.Errorf("build list query: %w", err)
+	}
+
+	rows, err := r.db.QueryxContext(ctx, selectSQL, args...)
+	if err != nil {
+		return nil, 0, fmt.Errorf("list tracks: %w", err)
 	}
 	defer rows.Close()
 
@@ -148,24 +167,23 @@ LIMIT $` + fmt.Sprint(len(args)+1) + ` OFFSET $` + fmt.Sprint(len(args)+2)
 	for rows.Next() {
 		t, err := scanTrack(rows)
 		if err != nil {
-			return nil, 0, err
+			return nil, 0, fmt.Errorf("scan list tracks: %w", err)
 		}
 		out = append(out, t)
 	}
-	return out, total, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, 0, fmt.Errorf("list tracks rows: %w", err)
+	}
+	return out, total, nil
 }
 
 // ⚠️ ВНИМАНИЕ по безопасности:
 // DeleteTrack/SetFavorite без deviceID/userID могут менять чужие треки.
 // Я оставил как у тебя в ports, но настоятельно советую добавить deviceID/userID в сигнатуру.
 func (r *TrackRepo) DeleteTrack(ctx context.Context, id uuid.UUID, userID uuid.UUID) error {
-	res, err := r.db.ExecContext(ctx, `
-DELETE FROM tracks t
-USING jobs j
-WHERE t.id = $1 AND t.job_id = j.id AND j.user_id = $2
-`, id, userID)
+	res, err := r.db.ExecContext(ctx, qTrackDelete, id, userID)
 	if err != nil {
-		return err
+		return fmt.Errorf("delete track: %w", err)
 	}
 
 	ra, _ := res.RowsAffected()
@@ -176,14 +194,9 @@ WHERE t.id = $1 AND t.job_id = j.id AND j.user_id = $2
 }
 
 func (r *TrackRepo) SetFavorite(ctx context.Context, id uuid.UUID, userID uuid.UUID, favorite bool) error {
-	res, err := r.db.ExecContext(ctx, `
-UPDATE tracks t
-SET is_favorite = $3
-FROM jobs j
-WHERE t.id = $1 AND t.job_id = j.id AND j.user_id = $2
-`, id, userID, favorite)
+	res, err := r.db.ExecContext(ctx, qTrackSetFavorite, id, userID, favorite)
 	if err != nil {
-		return err
+		return fmt.Errorf("set favorite: %w", err)
 	}
 
 	ra, _ := res.RowsAffected()

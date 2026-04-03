@@ -3,17 +3,20 @@ package postgres
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 
 	"github.com/AI-Music-App001/Ai-Music-Generator/services/internal/domain"
+	sq "github.com/Masterminds/squirrel"
 	"github.com/google/uuid"
+	"github.com/jmoiron/sqlx"
 )
 
 type JobRepo struct {
-	db *sql.DB
+	db *sqlx.DB
 }
 
-func NewJobRepo(db *sql.DB) *JobRepo { return &JobRepo{db: db} }
+func NewJobRepo(db *sql.DB) *JobRepo { return &JobRepo{db: sqlx.NewDb(db, "pgx")} }
 
 type rowScanner interface{ Scan(dest ...any) error }
 
@@ -36,7 +39,7 @@ func scanJob(s rowScanner) (domain.Job, error) {
 		&j.CreatedAt, &j.UpdatedAt,
 	)
 	if err != nil {
-		return domain.Job{}, err
+		return domain.Job{}, fmt.Errorf("scan job: %w", err)
 	}
 
 	j.Status = domain.JobStatus(status)
@@ -96,12 +99,12 @@ func (r *JobRepo) CreateJob(ctx context.Context, job domain.Job) (domain.Job, er
 
 	// create
 	var id uuid.UUID
-	if err := r.db.QueryRowContext(ctx, qJobCreate,
+	if err := r.db.QueryRowxContext(ctx, qJobCreate,
 		job.ID, job.UserID, job.Status.String(),
 		job.Params.Prompt, job.Params.CustomMode, style, title, job.Params.Instrumental,
 		job.Params.Model.String(), vocal, neg,
 	).Scan(&id); err != nil {
-		return domain.Job{}, err
+		return domain.Job{}, fmt.Errorf("create job: %w", err)
 	}
 
 	// читаем свежую запись (чтобы получить created_at/updated_at)
@@ -126,20 +129,8 @@ func (r *JobRepo) UpdateJob(ctx context.Context, job domain.Job) (domain.Job, er
 		finished = *job.FinishedAt
 	}
 
-	const q = `
-UPDATE jobs
-SET
-  status = $2,
-  suno_task_id = $3,
-  error = $4,
-  attempts = $5,
-  started_at = $6,
-  finished_at = $7
-WHERE id = $1
-RETURNING id;
-`
 	var id uuid.UUID
-	if err := r.db.QueryRowContext(ctx, q,
+	if err := r.db.QueryRowxContext(ctx, qJobUpdate,
 		job.ID,
 		job.Status.String(),
 		taskID,
@@ -148,65 +139,84 @@ RETURNING id;
 		started,
 		finished,
 	).Scan(&id); err != nil {
-		return domain.Job{}, err
+		return domain.Job{}, fmt.Errorf("update job: %w", err)
 	}
 
 	return r.GetJob(ctx, id)
 }
 
 func (r *JobRepo) GetJob(ctx context.Context, id uuid.UUID) (domain.Job, error) {
-	row := r.db.QueryRowContext(ctx, qJobGet, id)
+	row := r.db.QueryRowxContext(ctx, qJobGet, id)
 	j, err := scanJob(row)
-	if err == sql.ErrNoRows {
+	if errors.Is(err, sql.ErrNoRows) {
 		return domain.Job{}, fmt.Errorf("%w", domain.ErrJobNotFound)
 	}
-	return j, err
+	if err != nil {
+		return domain.Job{}, fmt.Errorf("get job: %w", err)
+	}
+	return j, nil
 }
 
 func (r *JobRepo) GetJobBySunoTaskID(ctx context.Context, taskID string) (domain.Job, error) {
-	row := r.db.QueryRowContext(ctx, qJobGetByTaskID, taskID)
+	row := r.db.QueryRowxContext(ctx, qJobGetByTaskID, taskID)
 	j, err := scanJob(row)
-	if err == sql.ErrNoRows {
+	if errors.Is(err, sql.ErrNoRows) {
 		return domain.Job{}, fmt.Errorf("%w", domain.ErrJobNotFound)
 	}
-	return j, err
+	if err != nil {
+		return domain.Job{}, fmt.Errorf("get job by suno task id: %w", err)
+	}
+	return j, nil
 }
 
 // ListJobs — принимает deviceID (installID) как у тебя в ports.
 // Мы JOIN’имся на users.install_id, чтобы найти jobs.
 func (r *JobRepo) ListJobs(ctx context.Context, userID uuid.UUID, status *domain.JobStatus, limit, offset int) ([]domain.Job, int, error) {
-	where := ` WHERE j.user_id = $1 `
-	args := []any{userID}
-
-	if status != nil {
-		where += ` AND j.status = $2 `
-		args = append(args, status.String())
+	const maxLimit = 100
+	if limit <= 0 || limit > maxLimit {
+		limit = maxLimit
+	}
+	if offset < 0 {
+		offset = 0
 	}
 
-	countSQL := `SELECT COUNT(*) FROM jobs j` + where
+	sb := sq.StatementBuilder.PlaceholderFormat(sq.Dollar)
+
+	countQ := sb.Select("COUNT(*)").
+		From("jobs j").
+		Where(sq.Eq{"j.user_id": userID})
+	if status != nil {
+		countQ = countQ.Where(sq.Eq{"j.status": status.String()})
+	}
+
+	countSQL, args, err := countQ.ToSql()
+	if err != nil {
+		return nil, 0, fmt.Errorf("build count query: %w", err)
+	}
 
 	var total int
-	if err := r.db.QueryRowContext(ctx, countSQL, args...).Scan(&total); err != nil {
-		return nil, 0, err
+	if err := r.db.QueryRowxContext(ctx, countSQL, args...).Scan(&total); err != nil {
+		return nil, 0, fmt.Errorf("count jobs: %w", err)
 	}
 
-	selectSQL := `
-SELECT
-  j.id, j.user_id, j.status,
-  j.prompt, j.custom_mode, j.style, j.title, j.instrumental, j.model, j.vocal_gender, j.negative_tags,
-  j.suno_task_id, j.error,
-  j.attempts, j.started_at, j.finished_at,
-  j.created_at, j.updated_at
-FROM jobs j
-` + where + `
-ORDER BY j.created_at DESC
-LIMIT $` + fmt.Sprint(len(args)+1) + ` OFFSET $` + fmt.Sprint(len(args)+2)
+	listQ := sb.Select(jobColumnsJ).
+		From("jobs j").
+		Where(sq.Eq{"j.user_id": userID}).
+		OrderBy("j.created_at DESC").
+		Limit(uint64(limit)).
+		Offset(uint64(offset))
+	if status != nil {
+		listQ = listQ.Where(sq.Eq{"j.status": status.String()})
+	}
 
-	args = append(args, limit, offset)
-
-	rows, err := r.db.QueryContext(ctx, selectSQL, args...)
+	selectSQL, args, err := listQ.ToSql()
 	if err != nil {
-		return nil, 0, err
+		return nil, 0, fmt.Errorf("build list query: %w", err)
+	}
+
+	rows, err := r.db.QueryxContext(ctx, selectSQL, args...)
+	if err != nil {
+		return nil, 0, fmt.Errorf("list jobs: %w", err)
 	}
 	defer rows.Close()
 
@@ -214,9 +224,12 @@ LIMIT $` + fmt.Sprint(len(args)+1) + ` OFFSET $` + fmt.Sprint(len(args)+2)
 	for rows.Next() {
 		j, err := scanJob(rows)
 		if err != nil {
-			return nil, 0, err
+			return nil, 0, fmt.Errorf("scan list jobs: %w", err)
 		}
 		out = append(out, j)
 	}
-	return out, total, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, 0, fmt.Errorf("list jobs rows: %w", err)
+	}
+	return out, total, nil
 }

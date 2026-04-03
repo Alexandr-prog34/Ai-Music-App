@@ -7,7 +7,7 @@ import (
 	"github.com/google/uuid"
 )
 
-type JobRepo interface {
+type JobRepository interface {
 	CreateJob(ctx context.Context, job domain.Job) (domain.Job, error)
 	UpdateJob(ctx context.Context, job domain.Job) (domain.Job, error)
 
