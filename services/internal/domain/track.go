@@ -17,9 +17,19 @@ type Track struct {
 	Title string
 	Tags  *string
 
-	DurationSec float64
+	Duration time.Duration
 
-	// Presigned URL из вашего S3 (как в YAML)
+	// Координаты объекта в MinIO/S3.
+	// Это то, что хранится в БД и не протухает.
+	AudioBucket string
+	AudioKey    string
+
+	// Обложка (если есть)
+	ImageBucket *string
+	ImageKey    *string
+
+	// Временные/вычисляемые поля для отдачи клиенту.
+	// В БД их хранить не нужно, т.к. presigned URL протухают.
 	AudioURL string
 
 	StreamURL *string
@@ -28,6 +38,7 @@ type Track struct {
 	IsFavorite bool
 
 	CreatedAt time.Time
+	UpdatedAt time.Time
 }
 
 func (t Track) Validate() error {
@@ -43,8 +54,12 @@ func (t Track) Validate() error {
 	if strings.TrimSpace(t.Title) == "" {
 		return InvalidInput(ErrTrackTitleRequired)
 	}
-	if strings.TrimSpace(t.AudioURL) == "" {
-		return InvalidInput(ErrTrackAudioURLRequired)
+
+	// Главное изменение: для сохранения в БД требуем bucket/key,
+	// а не presigned URL.
+	if strings.TrimSpace(t.AudioBucket) == "" || strings.TrimSpace(t.AudioKey) == "" {
+		return InvalidInput(ErrTrackAudioStorageRequired)
 	}
+
 	return nil
 }

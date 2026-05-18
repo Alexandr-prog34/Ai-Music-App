@@ -11,12 +11,12 @@ import (
 
 // JobService — бизнес-логика для job'ов.
 type JobService struct {
-	jobRepo  ports.JobRepo
+	jobRepo  ports.JobRepository
 	jobQueue ports.JobQueue
 }
 
 // NewJobService — конструктор.
-func NewJobService(jobRepo ports.JobRepo, jobQueue ports.JobQueue) *JobService {
+func NewJobService(jobRepo ports.JobRepository, jobQueue ports.JobQueue) *JobService {
 	return &JobService{
 		jobRepo:  jobRepo,
 		jobQueue: jobQueue,
