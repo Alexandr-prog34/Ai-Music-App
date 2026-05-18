@@ -14,8 +14,10 @@ import (
 	"github.com/redis/go-redis/v9"
 
 	"github.com/AI-Music-App001/Ai-Music-Generator/services/internal/httpapi/handlers"
+	"github.com/AI-Music-App001/Ai-Music-Generator/services/internal/ports"
 	"github.com/AI-Music-App001/Ai-Music-Generator/services/internal/queue"
 	"github.com/AI-Music-App001/Ai-Music-Generator/services/internal/repo/noop"
+	"github.com/AI-Music-App001/Ai-Music-Generator/services/internal/repo/postgres"
 	"github.com/AI-Music-App001/Ai-Music-Generator/services/internal/service"
 )
 
@@ -40,11 +42,25 @@ func main() {
 	//  конструктор очереди требует logger
 	jobQueue := queue.NewRedisJobQueue(rdb, "jobs", logger)
 
-	//  заглушка jobRepo (чтобы main не раздувать)
-	jobRepo := noop.NewJobRepo()
+	var jobRepo ports.JobRepository = noop.NewJobRepo()
+	var userRepo ports.UserRepository
+
+	if postgresDSN == "" {
+		logger.Warn("POSTGRES_DSN is empty, using noop job repository")
+	} else {
+		db, err := postgres.Open(ctx, postgresDSN, postgres.DefaultPoolConfig())
+		if err != nil {
+			logger.Warn("postgres unavailable, using noop job repository", "err", err)
+		} else {
+			defer db.Close()
+			jobRepo = postgres.NewJobRepo(db)
+			userRepo = postgres.NewUserRepo(db)
+			logger.Info("postgres repositories enabled")
+		}
+	}
 
 	// ---------- Сервис и handler для /jobs ----------
-	jobSvc := service.NewJobService(jobRepo, jobQueue)
+	jobSvc := service.NewJobService(jobRepo, jobQueue, userRepo)
 	jobsHandler := handlers.NewJobsHandler(jobSvc, logger)
 
 	//  handler для callback'ов Suno (локальная обработка suno.ErrInvalidCallback)

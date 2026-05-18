@@ -13,27 +13,38 @@ import (
 type JobService struct {
 	jobRepo  ports.JobRepository
 	jobQueue ports.JobQueue
+	userRepo ports.UserRepository
 }
 
 // NewJobService — конструктор.
-func NewJobService(jobRepo ports.JobRepository, jobQueue ports.JobQueue) *JobService {
+func NewJobService(jobRepo ports.JobRepository, jobQueue ports.JobQueue, userRepo ports.UserRepository) *JobService {
 	return &JobService{
 		jobRepo:  jobRepo,
 		jobQueue: jobQueue,
+		userRepo: userRepo,
 	}
 }
 
 // CreateJob — правильный порядок:
 // 1) сначала сохранить в БД
 // 2) потом положить в очередь
-func (s *JobService) CreateJob(ctx context.Context, deviceID uuid.UUID, params domain.JobParams) (domain.Job, error) {
+func (s *JobService) CreateJob(ctx context.Context, installID uuid.UUID, params domain.JobParams) (domain.Job, error) {
 	params.Normalize()
 	if err := params.Validate(); err != nil {
 		return domain.Job{}, err
 	}
 
+	userID := installID
+	if s.userRepo != nil {
+		user, err := s.userRepo.GetOrCreateUser(ctx, installID)
+		if err != nil {
+			return domain.Job{}, err
+		}
+		userID = user.ID
+	}
+
 	//  создание job вынесено в домен
-	j := domain.NewJob(deviceID, params)
+	j := domain.NewJob(userID, params)
 
 	// 1) сначала сохранить в БД
 	created, err := s.jobRepo.CreateJob(ctx, j)
