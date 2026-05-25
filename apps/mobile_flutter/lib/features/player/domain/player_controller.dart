@@ -76,4 +76,16 @@ class PlayerController extends FamilyAsyncNotifier<PlayerState, String> {
       return current.copyWith(isLiked: liked);
     });
   }
+
+  Future<void> renameSong(String nextTitle) async {
+    final current = state.valueOrNull;
+    if (current == null) return;
+
+    state = await AsyncValue.guard(() async {
+      final repo = ref.read(songRepositoryProvider);
+      final updated = current.song.copyWith(title: nextTitle);
+      await repo.save(updated);
+      return current.copyWith(song: updated);
+    });
+  }
 }

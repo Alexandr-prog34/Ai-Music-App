@@ -30,7 +30,7 @@ class InMemorySongRepository implements SongRepository {
     ),
   };
 
-  final Set<String> _likedIds = {};
+  final Set<String> _likedIds = {'1', '2'};
 
   int _nextId = 3;
 

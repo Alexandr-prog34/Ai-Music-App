@@ -1,12 +1,7 @@
 import 'package:flutter/material.dart';
 
-/// Frosted-glass card — simulates blur-darkened glass without [BackdropFilter].
-///
-/// In Figma the cards used `backdrop-blur(20px)` + white overlay, which
-/// darkened/blurred the purple gradient behind them. Since BackdropFilter
-/// causes scroll artifacts on many Android devices (Xiaomi, Samsung),
-/// we simulate the same look with a purple-tinted semi-transparent fill
-/// + a subtle lighter top zone for the specular highlight.
+import '../theme/app_colors.dart';
+
 class GlassCard extends StatelessWidget {
   final Widget child;
   final double radius;
@@ -25,27 +20,26 @@ class GlassCard extends StatelessWidget {
       clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(radius),
-        // Dark purple-tinted fill — looks like blurred purple gradient.
         gradient: const LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: [
-            Color(0x55493080), // top-left: lighter purple-grey
-            Color(0x44281050), // bottom-right: darker purple
+            Color(0x8A4A4253),
+            Color(0x66312739),
+            Color(0x8018151D),
           ],
         ),
-        border: Border.all(color: const Color(0x30FFFFFF), width: 0.5),
+        border: Border.all(color: AppColors.white12, width: 0.6),
         boxShadow: const [
           BoxShadow(
-            offset: Offset(0, 4),
-            blurRadius: 14,
-            color: Color(0x20000000),
+            offset: Offset(0, 10),
+            blurRadius: 26,
+            color: Color(0x38000000),
           ),
         ],
       ),
       child: Stack(
         children: [
-          // Specular highlight — brighter zone at top (simulates light on glass).
           Positioned(
             top: 0,
             left: 0,
@@ -57,14 +51,14 @@ class GlassCard extends StatelessWidget {
                   begin: Alignment.topCenter,
                   end: Alignment.bottomCenter,
                   colors: [
-                    Color(0x14FFFFFF), // subtle bright edge
-                    Color(0x00FFFFFF), // fade out
+                    Color(0x18FFFFFF),
+                    Color(0x08C5B6D8),
+                    Color(0x00000000),
                   ],
                 ),
               ),
             ),
           ),
-          // Content.
           Padding(padding: padding, child: child),
         ],
       ),

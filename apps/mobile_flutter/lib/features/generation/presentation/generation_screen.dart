@@ -41,7 +41,7 @@ class GenerationScreen extends ConsumerWidget {
             child: CustomScrollView(
               slivers: [
                 SliverPadding(
-                  padding: const EdgeInsets.fromLTRB(18, 12, 18, 100),
+                  padding: const EdgeInsets.fromLTRB(18, 12, 18, 132),
                   sliver: SliverList.list(
                     children: [
                       _ModeToggle(mode: st.mode, onChanged: ctrl.setMode),
@@ -77,23 +77,25 @@ class GenerationScreen extends ConsumerWidget {
                         onSongNameChanged: ctrl.setSongName,
                         onGenderChanged: ctrl.setVocalGender,
                       ),
-                      const SizedBox(height: 16),
-                      _CreateButton(
-                        label: st.mode == GenerationMode.description
-                            ? 'Create with Description'
-                            : 'Create with Lyrics',
-                        isLoading: st.isSubmitting,
-                        onPressed: () async {
-                          final song = await ctrl.submit();
-                          if (song != null && context.mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text('Created "${song.title}"'),
-                                behavior: SnackBarBehavior.floating,
-                              ),
-                            );
-                          }
-                        },
+                      Padding(
+                        padding: const EdgeInsets.only(top: 32, bottom: 18),
+                        child: _CreateFooter(
+                          label: st.mode == GenerationMode.description
+                              ? 'Create with Description'
+                              : 'Create with Lyrics',
+                          isLoading: st.isSubmitting,
+                          onPressed: () async {
+                            final song = await ctrl.submit();
+                            if (song != null && context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text('Created "${song.title}"'),
+                                  behavior: SnackBarBehavior.floating,
+                                ),
+                              );
+                            }
+                          },
+                        ),
                       ),
                     ],
                   ),
@@ -128,7 +130,7 @@ class _ModeToggle extends StatelessWidget {
       child: Row(
         children: [
           Expanded(child: _Tab(text: 'Description mode', selected: isDesc, onTap: () => onChanged(GenerationMode.description))),
-          Expanded(child: _Tab(text: 'Lyrics mode', selected: !isDesc, onTap: () => onChanged(GenerationMode.lyrics))),
+          Expanded(child: _Tab(text: 'Lyrics Mode', selected: !isDesc, onTap: () => onChanged(GenerationMode.lyrics))),
         ],
       ),
     );
@@ -150,7 +152,31 @@ class _Tab extends StatelessWidget {
         alignment: Alignment.center,
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(25),
-          color: selected ? AppColors.toggleActive : Colors.transparent,
+          gradient: selected
+              ? const LinearGradient(
+                  begin: Alignment.centerLeft,
+                  end: Alignment.centerRight,
+                  colors: [
+                    Color(0xFF9C7BC6),
+                    Color(0xFF7D55AE),
+                    Color(0xFF642A88),
+                  ],
+                )
+              : null,
+          color: selected ? null : Colors.transparent,
+          border: Border.all(
+            color: selected ? const Color(0x73FFFFFF) : Colors.transparent,
+            width: 0.6,
+          ),
+          boxShadow: selected
+              ? const [
+                  BoxShadow(
+                    offset: Offset(0, 10),
+                    blurRadius: 24,
+                    color: Color(0x333E145E),
+                  ),
+                ]
+              : null,
         ),
         child: Text(text, style: AppTypography.tab),
       ),
@@ -180,7 +206,14 @@ class _PromptCard extends StatelessWidget {
           Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: const Color(0x20FFFFFF),
+              gradient: const LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [
+                  Color(0x66543875),
+                  Color(0x331E172A),
+                ],
+              ),
               borderRadius: BorderRadius.circular(16),
               border: Border.all(color: AppColors.white10, width: 0.5),
             ),
@@ -216,7 +249,7 @@ class _MoodSection extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text('Select Mood', style: AppTypography.title),
+        Text('Select Mood', style: AppTypography.title),
         const SizedBox(height: 8),
         Wrap(
           spacing: 10,
@@ -252,7 +285,7 @@ class _GenreSection extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text('Select Genre', style: AppTypography.title),
+        Text('Select Genre', style: AppTypography.title),
         const SizedBox(height: 10),
         Row(
           children: [
@@ -294,12 +327,57 @@ class _GenreCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final bg = dark ? AppColors.chipDark : selected ? AppColors.chipSelected : AppColors.chipIdle;
+    final gradient = dark
+        ? const LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              Color(0xFF966EBD),
+              Color(0xFF7747A3),
+            ],
+          )
+        : selected
+            ? const LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [
+                  Color(0x664F356F),
+                  Color(0x88512D73),
+                ],
+              )
+            : const LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [
+                  Color(0x6631283F),
+                  Color(0x441B1721),
+                ],
+              );
     return GestureDetector(
       onTap: onTap,
       child: Container(
         height: 78,
-        decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(14)),
+        decoration: BoxDecoration(
+          gradient: gradient,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: dark
+                ? const Color(0x66FFFFFF)
+                : selected
+                    ? const Color(0x40FFFFFF)
+                    : AppColors.white10,
+            width: 0.6,
+          ),
+          boxShadow: dark
+              ? const [
+                  BoxShadow(
+                    offset: Offset(0, 10),
+                    blurRadius: 22,
+                    color: Color(0x2D4D1D75),
+                  ),
+                ]
+              : null,
+        ),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
@@ -337,13 +415,43 @@ class _AdvancedOptions extends StatelessWidget {
           child: Container(
             height: 56,
             padding: const EdgeInsets.symmetric(horizontal: 14),
-            decoration: BoxDecoration(color: AppColors.chipIdle, borderRadius: BorderRadius.circular(18), border: Border.all(color: AppColors.white10, width: 0.5)),
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  Color(0x664F356F),
+                  Color(0x55301B4A),
+                ],
+              ),
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(color: AppColors.white10, width: 0.5),
+              boxShadow: const [
+                BoxShadow(
+                  offset: Offset(0, 8),
+                  blurRadius: 22,
+                  color: Color(0x22000000),
+                ),
+              ],
+            ),
             child: Row(
               children: [
                 const AppIcon(AppAssets.advanced, size: 22),
                 const SizedBox(width: 10),
-                const Expanded(child: Text('Advanced Options', style: AppTypography.button)),
-                Icon(expanded ? Icons.expand_less : Icons.expand_more, color: Colors.white),
+                Expanded(child: Text('Advanced Options', style: AppTypography.button)),
+                Container(
+                  width: 30,
+                  height: 30,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    border: Border.all(color: AppColors.white45, width: 0.8),
+                  ),
+                  child: Icon(
+                    expanded ? Icons.keyboard_arrow_up : Icons.keyboard_arrow_down,
+                    color: Colors.white,
+                    size: 18,
+                  ),
+                ),
               ],
             ),
           ),
@@ -353,30 +461,61 @@ class _AdvancedOptions extends StatelessWidget {
           child: expanded
               ? Padding(
                   padding: const EdgeInsets.only(top: 12),
-                  child: Container(
+                  child: GlassCard(
+                    radius: 24,
                     padding: const EdgeInsets.all(14),
-                    decoration: BoxDecoration(color: AppColors.chipIdle, borderRadius: BorderRadius.circular(18), border: Border.all(color: AppColors.white10, width: 0.5)),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text('Song Name', style: AppTypography.body.copyWith(color: Colors.white)),
+                        Text(
+                          'Song Name',
+                          style: AppTypography.body.copyWith(
+                            color: Colors.white,
+                            fontSize: 16,
+                          ),
+                        ),
                         const SizedBox(height: 8),
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                          decoration: BoxDecoration(color: const Color(0x20FFFFFF), borderRadius: BorderRadius.circular(14)),
-                          child: TextField(
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                          decoration: BoxDecoration(
+                            gradient: const LinearGradient(
+                              begin: Alignment.topCenter,
+                              end: Alignment.bottomCenter,
+                              colors: [
+                                Color(0x664B2F71),
+                                Color(0x33201135),
+                              ],
+                            ),
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(color: AppColors.white10, width: 0.5),
+                          ),
+                          child: TextFormField(
+                            initialValue: songName,
                             onChanged: onSongNameChanged,
                             style: AppTypography.body.copyWith(color: Colors.white),
-                            decoration: InputDecoration(isCollapsed: true, border: InputBorder.none, hintText: 'Type here...', hintStyle: AppTypography.body.copyWith(color: AppColors.white40)),
+                            decoration: InputDecoration(
+                              isCollapsed: true,
+                              border: InputBorder.none,
+                              hintText: 'Type here...',
+                              hintStyle: AppTypography.body.copyWith(
+                                color: AppColors.white40,
+                              ),
+                            ),
                           ),
                         ),
                         const SizedBox(height: 14),
-                        Text('Vocal Gender', style: AppTypography.body.copyWith(color: Colors.white)),
+                        Text(
+                          'Vocal Gender',
+                          style: AppTypography.body.copyWith(
+                            color: Colors.white,
+                            fontSize: 16,
+                          ),
+                        ),
                         const SizedBox(height: 10),
                         Row(children: [
-                          Expanded(child: _GenderTile(label: 'man', iconAsset: AppAssets.genderMan, selected: vocalGender == VocalGender.man, onTap: () => onGenderChanged(VocalGender.man))),
+                          Expanded(child: _GenderTile(label: 'man', iconAsset: AppAssets.genderMan, selected: vocalGender == VocalGender.man, onTap: () => onGenderChanged(vocalGender == VocalGender.man ? null : VocalGender.man))),
                           const SizedBox(width: 12),
-                          Expanded(child: _GenderTile(label: 'woman', iconAsset: AppAssets.genderWoman, selected: vocalGender == VocalGender.woman, onTap: () => onGenderChanged(VocalGender.woman))),
+                          Expanded(child: _GenderTile(label: 'woman', iconAsset: AppAssets.genderWoman, selected: vocalGender == VocalGender.woman, onTap: () => onGenderChanged(vocalGender == VocalGender.woman ? null : VocalGender.woman))),
                         ]),
                       ],
                     ),
@@ -401,14 +540,36 @@ class _GenderTile extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        height: 64,
+        height: 74,
         alignment: Alignment.center,
-        decoration: BoxDecoration(color: selected ? AppColors.chipSelected : AppColors.chipIdle, borderRadius: BorderRadius.circular(16)),
-        child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-          AppIcon(iconAsset, size: 22),
-          const SizedBox(width: 10),
-          Text(label, style: AppTypography.label),
-        ]),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: selected
+                ? const [
+                    Color(0x88653A98),
+                    Color(0x55402063),
+                  ]
+                : const [
+                    Color(0x442F2344),
+                    Color(0x331A1424),
+                  ],
+          ),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: selected ? const Color(0x669B6BEB) : AppColors.white10,
+            width: 0.6,
+          ),
+        ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            AppIcon(iconAsset, size: 22),
+            const SizedBox(height: 8),
+            Text(label, style: AppTypography.label.copyWith(fontSize: 12)),
+          ],
+        ),
       ),
     );
   }
@@ -431,12 +592,96 @@ class _CreateButton extends StatelessWidget {
         alignment: Alignment.center,
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(18),
-          color: const Color(0x44382060),
-          border: Border.all(color: const Color(0x22FFFFFF), width: 0.5),
+          gradient: const LinearGradient(
+            begin: Alignment.centerLeft,
+            end: Alignment.centerRight,
+            colors: [
+              Color(0x805B4379),
+              Color(0x66352250),
+              Color(0x804B1F66),
+            ],
+          ),
+          border: Border.all(color: const Color(0x2EFFFFFF), width: 0.6),
+          boxShadow: const [
+            BoxShadow(
+              offset: Offset(0, 12),
+              blurRadius: 26,
+              color: Color(0x2B000000),
+            ),
+          ],
         ),
         child: isLoading
             ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
             : Text(label, style: AppTypography.button),
+      ),
+    );
+  }
+}
+
+class _CreateFooter extends StatelessWidget {
+  final String label;
+  final bool isLoading;
+  final VoidCallback onPressed;
+
+  const _CreateFooter({
+    required this.label,
+    required this.isLoading,
+    required this.onPressed,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        const SizedBox(height: 6),
+        _CreateButton(
+          label: label,
+          isLoading: isLoading,
+          onPressed: onPressed,
+        ),
+      ],
+    );
+  }
+}
+
+class _DoneButton extends StatelessWidget {
+  final VoidCallback onPressed;
+
+  const _DoneButton({required this.onPressed});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onPressed,
+      child: Container(
+        height: 46,
+        width: double.infinity,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(14),
+          gradient: const LinearGradient(
+            begin: Alignment.centerLeft,
+            end: Alignment.centerRight,
+            colors: [
+              Color(0xFF8A67B3),
+              Color(0xFF9B73C8),
+            ],
+          ),
+          boxShadow: const [
+            BoxShadow(
+              offset: Offset(0, 8),
+              blurRadius: 20,
+              color: Color(0x332A1050),
+            ),
+          ],
+        ),
+        child: Text(
+          'Done',
+          style: AppTypography.button.copyWith(
+            color: const Color(0xFF24104A),
+            fontSize: 17,
+          ),
+        ),
       ),
     );
   }
@@ -453,17 +698,56 @@ class _Pill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final gradient = dark
+        ? const LinearGradient(
+            begin: Alignment.centerLeft,
+            end: Alignment.centerRight,
+            colors: [
+              Color(0xFF8F69BA),
+              Color(0xFF7B4BA6),
+            ],
+          )
+        : selected
+            ? const LinearGradient(
+                begin: Alignment.centerLeft,
+                end: Alignment.centerRight,
+                colors: [
+                  Color(0x66503674),
+                  Color(0x8A5C377E),
+                ],
+              )
+            : const LinearGradient(
+                begin: Alignment.centerLeft,
+                end: Alignment.centerRight,
+                colors: [
+                  Color(0x6631283F),
+                  Color(0x4D2A2237),
+                ],
+              );
     return GestureDetector(
       onTap: onTap,
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(25),
-          color: dark
-              ? AppColors.chipDark
-              : selected
-                  ? AppColors.chipSelected
-                  : AppColors.chipIdle,
+          gradient: gradient,
+          border: Border.all(
+            color: dark
+                ? const Color(0x59FFFFFF)
+                : selected
+                    ? const Color(0x2EFFFFFF)
+                    : AppColors.white10,
+            width: 0.6,
+          ),
+          boxShadow: dark
+              ? const [
+                  BoxShadow(
+                    offset: Offset(0, 10),
+                    blurRadius: 22,
+                    color: Color(0x29441B67),
+                  ),
+                ]
+              : null,
         ),
         child: Text(text, style: AppTypography.body.copyWith(color: const Color(0xC9FFFFFF))),
       ),
@@ -475,57 +759,104 @@ class _Pill extends StatelessWidget {
 
 Future<void> _showMoodSheet(BuildContext context, WidgetRef ref) async {
   final ctrl = ref.read(generationFormProvider.notifier);
+  final selected = ref.read(generationFormProvider).mood;
   await showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
     backgroundColor: Colors.transparent,
-    builder: (_) => _PickerSheet(title: 'Select Mood', items: GenerationCatalog.allMoods, onSelect: ctrl.selectMood),
+    builder: (_) => _PickerSheet(
+      items: GenerationCatalog.allMoods,
+      selected: selected,
+      onSelect: ctrl.selectMood,
+    ),
   );
 }
 
 Future<void> _showGenreSheet(BuildContext context, WidgetRef ref) async {
   final ctrl = ref.read(generationFormProvider.notifier);
+  final selected = ref.read(generationFormProvider).genre;
   await showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
     backgroundColor: Colors.transparent,
-    builder: (_) => _PickerSheet(title: 'Select Genre', items: GenerationCatalog.allGenres, onSelect: ctrl.selectGenre),
+    builder: (_) => _PickerSheet(
+      items: GenerationCatalog.allGenres,
+      selected: selected,
+      onSelect: ctrl.selectGenre,
+    ),
   );
 }
 
-class _PickerSheet extends StatelessWidget {
-  final String title;
+class _PickerSheet extends StatefulWidget {
   final List<String> items;
+  final String? selected;
   final ValueChanged<String> onSelect;
-  const _PickerSheet({required this.title, required this.items, required this.onSelect});
+  const _PickerSheet({
+    required this.items,
+    required this.selected,
+    required this.onSelect,
+  });
+
+  @override
+  State<_PickerSheet> createState() => _PickerSheetState();
+}
+
+class _PickerSheetState extends State<_PickerSheet> {
+  late String? _selected;
+
+  @override
+  void initState() {
+    super.initState();
+    _selected = widget.selected;
+  }
 
   @override
   Widget build(BuildContext context) {
+    final maxHeight = MediaQuery.of(context).size.height * 0.46;
+    final bottomInset = MediaQuery.of(context).padding.bottom;
+
     return Container(
-      height: MediaQuery.of(context).size.height * 0.62,
-      decoration: const BoxDecoration(
-        color: AppColors.surfaceSheet,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(26)),
+      margin: EdgeInsets.fromLTRB(10, 0, 10, 106 + bottomInset),
+      padding: const EdgeInsets.fromLTRB(14, 14, 14, 16),
+      decoration: BoxDecoration(
+        color: const Color(0xF018151D),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: AppColors.white12, width: 0.6),
+        boxShadow: const [
+          BoxShadow(
+            offset: Offset(0, 10),
+            blurRadius: 28,
+            color: Color(0x55000000),
+          ),
+        ],
       ),
       child: Column(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          const SizedBox(height: 14),
-          Text(title, style: AppTypography.title),
-          const SizedBox(height: 12),
-          Expanded(
+          ConstrainedBox(
+            constraints: BoxConstraints(maxHeight: maxHeight),
             child: SingleChildScrollView(
-              padding: const EdgeInsets.symmetric(horizontal: 18),
               child: Wrap(
                 spacing: 10,
                 runSpacing: 10,
-                children: [for (final item in items) _Pill(text: item, selected: false, onTap: () => onSelect(item))],
+                children: [
+                  for (final item in widget.items)
+                    _Pill(
+                      text: item,
+                      selected: _selected == item,
+                      onTap: () {
+                        setState(() {
+                          _selected = item;
+                        });
+                        widget.onSelect(item);
+                      },
+                    ),
+                ],
               ),
             ),
           ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(18, 14, 18, 18),
-            child: _CreateButton(label: 'Done', onPressed: () => Navigator.of(context).pop()),
-          ),
+          const SizedBox(height: 26),
+          _DoneButton(onPressed: () => Navigator.of(context).pop()),
         ],
       ),
     );

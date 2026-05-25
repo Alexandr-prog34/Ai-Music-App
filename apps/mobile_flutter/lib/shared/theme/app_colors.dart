@@ -7,27 +7,27 @@ class AppColors {
   AppColors._();
 
   // ── Brand palette ──────────────────────────────────────────────────
-  static const primary = Color(0xFF734ACD);
-  static const primaryDark = Color(0xFF210957);
-  static const primaryDeep = Color(0xFF2A004F);
-  static const surface = Color(0xFF1A0033);
+  static const primary = Color(0xFF8A62C8);
+  static const primaryDark = Color(0xFF40205F);
+  static const primaryDeep = Color(0xFF25132F);
+  static const surface = Color(0xFF15121B);
 
-  static const accent = Color(0xFFE1A7FF);
-  static const highlight = Color(0xFFF3CFFF);
+  static const accent = Color(0xFFB185E8);
+  static const highlight = Color(0xFFD2B1FF);
   static const error = Color(0xFFFF4D6D);
 
   // ── Text ───────────────────────────────────────────────────────────
   static const textPrimary = Color(0xFFFFFFFF);
-  static const textSecondary = Color(0xFFB8A8D9);
+  static const textSecondary = Color(0xFFC7BDD4);
 
   // ── Chips / pills (Figma: rgba(73,26,177,0.25)) ──────────────────
-  static const chipIdle = Color(0x40491AB1);
-  static const chipDark = Color(0xB3210957);
-  static const chipSelected = Color(0x66734ACD);
+  static const chipIdle = Color(0x5231283F);
+  static const chipDark = Color(0xD61B1721);
+  static const chipSelected = Color(0x8A71439F);
 
   // ── Mode toggle ────────────────────────────────────────────────────
-  static const toggleBackground = Color(0xFF210957);
-  static const toggleActive = Color(0xFF734ACD);
+  static const toggleBackground = Color(0xCC211C28);
+  static const toggleActive = Color(0xFF7F57B3);
 
   // ── Glass / overlays ──────────────────────────────────────────────
   static const glassWhiteHi = Color(0x2EFFFFFF);
@@ -35,18 +35,18 @@ class AppColors {
   static const glassBorder = Color(0x2EFFFFFF);
 
   // ── Bottom nav bar (Figma: backdrop-blur + rgba(255,255,255,0.2)) ─
-  static const navBarFill = Color(0x33FFFFFF);
+  static const navBarFill = Color(0xCC241C31);
 
   // ── Backgrounds ───────────────────────────────────────────────────
   static const backgroundGradient = LinearGradient(
-    begin: Alignment.topCenter,
-    end: Alignment.bottomCenter,
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
     colors: [
-      Color(0xFF2A004F),
-      Color(0xFF5B1FA6),
-      Color(0xFF8F3DFF),
-      Color(0xFFE1A7FF),
+      Color(0xFF34273E),
+      Color(0xFF1C1822),
+      Color(0xFF110E14),
     ],
+    stops: [0, 0.46, 1],
   );
 
   // ── Commonly-used white opacities (avoids withOpacity at call-site) ──
@@ -64,18 +64,18 @@ class AppColors {
   static const white10 = Color(0x1AFFFFFF); // 10 %
 
   /// Surface at 92 % opacity — used for bottom sheets and dialogs.
-  static const surfaceSheet = Color(0xEB1A0033);
+  static const surfaceSheet = Color(0xEB17131B);
 
   /// Surface at 85 % — lyrics card, etc.
-  static const surfaceDim = Color(0xD91A0033);
+  static const surfaceDim = Color(0xD91C1822);
 
   /// Primary at 45 % — play button fill.
-  static const primaryMuted = Color(0x73734ACD);
+  static const primaryMuted = Color(0x737F57B3);
 
   /// Subtle centre-glow overlay used on most screens.
   static const glowGradient = RadialGradient(
-    center: Alignment(0, 0.25),
-    radius: 0.85,
-    colors: [Color(0x40FFFFFF), Colors.transparent],
+    center: Alignment(-0.15, -0.2),
+    radius: 1.0,
+    colors: [Color(0x146E31C8), Colors.transparent],
   );
 }
