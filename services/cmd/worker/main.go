@@ -16,6 +16,7 @@ import (
 
 	"github.com/AI-Music-App001/Ai-Music-Generator/services/internal/events"
 	"github.com/AI-Music-App001/Ai-Music-Generator/services/internal/notify"
+	"github.com/AI-Music-App001/Ai-Music-Generator/services/internal/ports"
 	"github.com/AI-Music-App001/Ai-Music-Generator/services/internal/queue"
 	"github.com/AI-Music-App001/Ai-Music-Generator/services/internal/repo/postgres"
 	"github.com/AI-Music-App001/Ai-Music-Generator/services/internal/service"
@@ -98,7 +99,7 @@ func main() {
 		Timeout: 15 * time.Second,
 	})
 	callbackProcessor := service.NewSunoCallbackService(jobRepo, trackRepo, objectStorage, notifier, logger)
-	jobProcessor := workerapp.NewJobProcessor(jobRepo, sunoClient, notifier, callbackURL, callbackProcessorIfEnabled(callbackProcessor, pollFallbackEnabled), pollInterval, pollTimeout, logger)
+	jobProcessor := workerapp.NewJobProcessor(jobRepo, sunoClient, notifier, callbackURL, callbackQueueIfEnabled(callbackQueue, pollFallbackEnabled), pollInterval, pollTimeout, logger)
 	jobConsumer := workerapp.NewConsumer(jobQueue, jobProcessor, logger)
 	callbackConsumer := workerapp.NewSunoCallbackConsumer(callbackQueue, callbackProcessor, logger)
 
@@ -173,11 +174,11 @@ func pollingFallbackEnabled(sunoMode string, callbackPublic bool) (bool, error) 
 	return enabled, nil
 }
 
-func callbackProcessorIfEnabled(handler *service.SunoCallbackService, enabled bool) *service.SunoCallbackService {
+func callbackQueueIfEnabled(queue ports.SunoCallbackQueue, enabled bool) ports.SunoCallbackQueue {
 	if !enabled {
 		return nil
 	}
-	return handler
+	return queue
 }
 
 func getenvDuration(key string, def time.Duration) time.Duration {

@@ -70,6 +70,15 @@ func (s *SunoCallbackService) Handle(ctx context.Context, req sunocallback.Reque
 }
 
 func (s *SunoCallbackService) handleComplete(ctx context.Context, job domain.Job, req sunocallback.Request) error {
+	if job.Status == domain.JobReady {
+		s.logger.Info(
+			"suno callback complete ignored because job is already ready",
+			"job_id", job.ID.String(),
+			"task_id", req.TaskID(),
+		)
+		return nil
+	}
+
 	tracks := make([]domain.Track, 0, len(req.Results()))
 	for _, result := range req.Results() {
 		track, err := s.buildTrack(ctx, job, result)
@@ -84,16 +93,12 @@ func (s *SunoCallbackService) handleComplete(ctx context.Context, job domain.Job
 		tracks = append(tracks, created)
 	}
 
-	updatedJob := job
-	if job.Status != domain.JobReady {
-		if err := job.MarkReady(time.Now().UTC(), tracks); err != nil {
-			return err
-		}
-		updated, err := s.jobRepo.UpdateJob(ctx, job)
-		if err != nil {
-			return fmt.Errorf("update job ready: %w", err)
-		}
-		updatedJob = updated
+	if err := job.MarkReady(time.Now().UTC(), tracks); err != nil {
+		return err
+	}
+	updatedJob, err := s.jobRepo.UpdateJob(ctx, job)
+	if err != nil {
+		return fmt.Errorf("update job ready: %w", err)
 	}
 
 	if err := s.publishJobUpdated(ctx, updatedJob); err != nil {

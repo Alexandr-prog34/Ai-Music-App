@@ -19,19 +19,19 @@ type retryableError interface {
 	Retryable() bool
 }
 
-type sunoCompletionHandler interface {
-	Handle(ctx context.Context, req sunocallback.Request) error
+type sunoCallbackQueue interface {
+	Enqueue(ctx context.Context, req sunocallback.Request) error
 }
 
 type Processor struct {
-	jobRepo           ports.JobRepository
-	sunoClient        ports.SunoClient
-	notifier          ports.Notifier
-	callbackURL       string
-	completionHandler sunoCompletionHandler
-	pollInterval      time.Duration
-	pollTimeout       time.Duration
-	logger            *slog.Logger
+	jobRepo       ports.JobRepository
+	sunoClient    ports.SunoClient
+	notifier      ports.Notifier
+	callbackURL   string
+	callbackQueue sunoCallbackQueue
+	pollInterval  time.Duration
+	pollTimeout   time.Duration
+	logger        *slog.Logger
 }
 
 func NewJobProcessor(
@@ -39,7 +39,7 @@ func NewJobProcessor(
 	sunoClient ports.SunoClient,
 	notifier ports.Notifier,
 	callbackURL string,
-	completionHandler sunoCompletionHandler,
+	callbackQueue sunoCallbackQueue,
 	pollInterval time.Duration,
 	pollTimeout time.Duration,
 	logger *slog.Logger,
@@ -49,14 +49,14 @@ func NewJobProcessor(
 	}
 
 	return &Processor{
-		jobRepo:           jobRepo,
-		sunoClient:        sunoClient,
-		notifier:          notifier,
-		callbackURL:       callbackURL,
-		completionHandler: completionHandler,
-		pollInterval:      pollInterval,
-		pollTimeout:       pollTimeout,
-		logger:            logger,
+		jobRepo:       jobRepo,
+		sunoClient:    sunoClient,
+		notifier:      notifier,
+		callbackURL:   callbackURL,
+		callbackQueue: callbackQueue,
+		pollInterval:  pollInterval,
+		pollTimeout:   pollTimeout,
+		logger:        logger,
 	}
 }
 
@@ -178,7 +178,7 @@ func (p *Processor) startPolling(jobID uuid.UUID, taskID string) {
 }
 
 func (p *Processor) pollingEnabled() bool {
-	return p.completionHandler != nil && p.pollInterval > 0
+	return p.callbackQueue != nil && p.pollInterval > 0
 }
 
 func (p *Processor) pollUntilComplete(ctx context.Context, jobID uuid.UUID, taskID string) error {
@@ -208,12 +208,12 @@ func (p *Processor) pollUntilComplete(ctx context.Context, jobID uuid.UUID, task
 			continue
 		}
 
-		if err := p.completionHandler.Handle(ctx, req); err != nil {
-			p.logger.Warn("worker suno polling completion handle failed", "job_id", jobID.String(), "task_id", taskID, "err", err)
+		if err := p.callbackQueue.Enqueue(ctx, req); err != nil {
+			p.logger.Warn("worker suno polling callback enqueue failed", "job_id", jobID.String(), "task_id", taskID, "err", err)
 			continue
 		}
 
-		p.logger.Info("worker suno polling resolved job", "job_id", jobID.String(), "task_id", taskID, "status", details.Status)
+		p.logger.Info("worker suno polling enqueued terminal callback", "job_id", jobID.String(), "task_id", taskID, "status", details.Status)
 		return nil
 	}
 }

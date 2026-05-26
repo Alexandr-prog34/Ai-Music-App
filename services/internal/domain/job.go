@@ -58,10 +58,6 @@ func (p *JobParams) Normalize() {
 }
 
 func (p JobParams) Validate() error {
-	if p.Prompt == "" {
-		return InvalidInput(ErrPromptRequired)
-	}
-
 	if p.Model != "" && !p.Model.isValid() {
 		return InvalidInput(ErrModelInvalid, "got=%q", p.Model.String())
 	}
@@ -82,6 +78,9 @@ func (p JobParams) Validate() error {
 		}
 		if p.Title == nil {
 			return InvalidInput(ErrTitleRequiredCustom)
+		}
+		if !p.Instrumental && p.Prompt == "" {
+			return InvalidInput(ErrPromptRequired)
 		}
 
 		// prompt limit
@@ -125,6 +124,9 @@ func (p JobParams) Validate() error {
 
 	} else {
 		// non-custom mode
+		if p.Prompt == "" {
+			return InvalidInput(ErrPromptRequired)
+		}
 		if len(p.Prompt) > 500 {
 			return InvalidInput(ErrPromptTooLong, "mode=non_custom max=%d got=%d", 500, len(p.Prompt))
 		}

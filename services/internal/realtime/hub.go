@@ -132,22 +132,36 @@ func (c *client) readPump() {
 	})
 
 	for {
+		messageType, payload, err := c.conn.ReadMessage()
+		if err != nil {
+			return
+		}
+		if messageType != websocket.TextMessage {
+			c.sendError("unsupported websocket message type")
+			return
+		}
+
 		var msg WSClientMessage
-		if err := c.conn.ReadJSON(&msg); err != nil {
+		if err := json.Unmarshal(payload, &msg); err != nil {
+			c.sendError("invalid websocket json")
 			return
 		}
 
 		if msg.Type == WSClientEventPing {
-			payload, err := json.Marshal(NewWSPong())
+			pongPayload, err := json.Marshal(NewWSPong())
 			if err != nil {
 				return
 			}
 			select {
-			case c.send <- payload:
+			case c.send <- pongPayload:
 			default:
 				return
 			}
+			continue
 		}
+
+		c.sendError("unsupported websocket event type")
+		return
 	}
 }
 
@@ -181,4 +195,15 @@ func (c *client) close() {
 		c.hub.unregister(c)
 		_ = c.conn.Close()
 	})
+}
+
+func (c *client) sendError(message string) {
+	payload, err := json.Marshal(NewWSError(message))
+	if err != nil {
+		return
+	}
+	select {
+	case c.send <- payload:
+	default:
+	}
 }

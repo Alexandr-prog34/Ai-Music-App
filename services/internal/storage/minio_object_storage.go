@@ -26,8 +26,8 @@ type Config struct {
 
 type MinIOObjectStorage struct {
 	client        *minio.Client
+	presignClient *minio.Client
 	bucket        string
-	publicBaseURL *url.URL
 }
 
 func NewMinIOObjectStorage(ctx context.Context, cfg Config) (ports.ObjectStorage, error) {
@@ -42,6 +42,7 @@ func NewMinIOObjectStorage(ctx context.Context, cfg Config) (ports.ObjectStorage
 	client, err := minio.New(endpoint, &minio.Options{
 		Creds:  credentials.NewStaticV4(strings.TrimSpace(cfg.AccessKey), strings.TrimSpace(cfg.SecretKey), ""),
 		Secure: secure,
+		Region: "us-east-1",
 	})
 	if err != nil {
 		return nil, fmt.Errorf("create minio client: %w", err)
@@ -52,15 +53,24 @@ func NewMinIOObjectStorage(ctx context.Context, cfg Config) (ports.ObjectStorage
 		publicEndpoint = cfg.Endpoint
 	}
 
-	publicBaseURL, err := parsePublicBaseURL(publicEndpoint)
+	publicHost, publicSecure, err := normalizeEndpoint(publicEndpoint)
 	if err != nil {
 		return nil, err
 	}
 
+	presignClient, err := minio.New(publicHost, &minio.Options{
+		Creds:  credentials.NewStaticV4(strings.TrimSpace(cfg.AccessKey), strings.TrimSpace(cfg.SecretKey), ""),
+		Secure: publicSecure,
+		Region: "us-east-1",
+	})
+	if err != nil {
+		return nil, fmt.Errorf("create minio presign client: %w", err)
+	}
+
 	store := &MinIOObjectStorage{
 		client:        client,
+		presignClient: presignClient,
 		bucket:        strings.TrimSpace(cfg.Bucket),
-		publicBaseURL: publicBaseURL,
 	}
 	if err := store.ensureBucket(ctx); err != nil {
 		return nil, err
@@ -113,13 +123,14 @@ func (s *MinIOObjectStorage) PresignGetURL(ctx context.Context, bucket string, o
 		expiry = defaultPresignTTL
 	}
 
-	u, err := s.client.PresignedGetObject(ctx, bucket, strings.TrimSpace(objectKey), expiry, nil)
+	client := s.client
+	if s.presignClient != nil {
+		client = s.presignClient
+	}
+
+	u, err := client.PresignedGetObject(ctx, bucket, strings.TrimSpace(objectKey), expiry, nil)
 	if err != nil {
 		return "", fmt.Errorf("presign object: %w", err)
-	}
-	if s.publicBaseURL != nil {
-		u.Scheme = s.publicBaseURL.Scheme
-		u.Host = s.publicBaseURL.Host
 	}
 	return u.String(), nil
 }
@@ -164,30 +175,4 @@ func normalizeEndpoint(raw string) (string, bool, error) {
 	}
 
 	return raw, false, nil
-}
-
-func parsePublicBaseURL(raw string) (*url.URL, error) {
-	raw = strings.TrimSpace(raw)
-	if raw == "" {
-		return nil, nil
-	}
-
-	if strings.HasPrefix(raw, "http://") || strings.HasPrefix(raw, "https://") {
-		parsed, err := url.Parse(raw)
-		if err != nil {
-			return nil, fmt.Errorf("parse public s3 endpoint: %w", err)
-		}
-		if strings.TrimSpace(parsed.Host) == "" {
-			return nil, fmt.Errorf("public s3 endpoint host is empty")
-		}
-		return &url.URL{
-			Scheme: parsed.Scheme,
-			Host:   parsed.Host,
-		}, nil
-	}
-
-	return &url.URL{
-		Scheme: "http",
-		Host:   raw,
-	}, nil
 }
