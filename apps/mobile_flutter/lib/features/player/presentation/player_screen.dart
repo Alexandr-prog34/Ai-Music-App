@@ -1,14 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 
 import '../../../core/models/playlist.dart';
 import '../../../core/models/song.dart';
-import '../../../shared/routing/app_router.dart';
 import '../../../shared/theme/app_colors.dart';
 import '../../../shared/theme/app_typography.dart';
 import '../../../shared/widgets/app_background.dart';
 import '../../../shared/widgets/glass_card.dart';
+import 'download_url_helper.dart';
 import '../../library/data/playlist_repository_impl.dart';
 import '../../library/data/song_repository_impl.dart';
 import '../../library/domain/library_controller.dart';
@@ -30,11 +29,6 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
       context: context,
       barrierColor: Colors.black38,
       builder: (_) => _SongOptionsDialog(
-        onAiCover: () async {
-          Navigator.of(context).pop();
-          if (!mounted) return;
-          context.go(Routes.aiCover);
-        },
         onAddToPlaylist: () async {
           Navigator.of(context).pop();
           await _openAddToPlaylist(state.song);
@@ -138,6 +132,39 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
     );
   }
 
+  Future<void> _downloadTrack(PlayerController ctrl, Song song) async {
+    try {
+      final url = await ctrl.getDownloadUrl();
+      final fileName = _buildDownloadFileName(song.title);
+
+      await triggerTrackDownload(url, fileName: fileName);
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Track download started'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Could not download track: $error'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+  }
+
+  String _buildDownloadFileName(String title) {
+    final sanitized = title
+        .replaceAll(RegExp(r'[\\/:*?"<>|]'), '_')
+        .trim();
+    final baseName = sanitized.isEmpty ? 'track' : sanitized;
+    return '$baseName.mp3';
+  }
+
   @override
   Widget build(BuildContext context) {
     final asyncState = ref.watch(playerControllerProvider(widget.songId));
@@ -183,6 +210,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
                   onBack: () => Navigator.of(context).pop(),
                   onMore: () => _openSongOptions(state, ctrl),
                   onEditPicture: _openEditPictureDialog,
+                  onDownload: () => _downloadTrack(ctrl, state.song),
                 ),
               ),
             ),
@@ -199,6 +227,7 @@ class _PlayerBody extends StatelessWidget {
   final VoidCallback onBack;
   final VoidCallback onMore;
   final VoidCallback onEditPicture;
+  final VoidCallback onDownload;
 
   const _PlayerBody({
     required this.state,
@@ -206,6 +235,7 @@ class _PlayerBody extends StatelessWidget {
     required this.onBack,
     required this.onMore,
     required this.onEditPicture,
+    required this.onDownload,
   });
 
   @override
@@ -227,7 +257,17 @@ class _PlayerBody extends StatelessWidget {
                 style: AppTypography.title.copyWith(fontSize: 18),
               ),
             ),
-            _LikeButton(liked: state.isLiked, onTap: ctrl.toggleLike),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _PlayerActionButton(
+                  icon: Icons.cloud_download_outlined,
+                  onTap: onDownload,
+                ),
+                const SizedBox(width: 8),
+                _LikeButton(liked: state.isLiked, onTap: ctrl.toggleLike),
+              ],
+            ),
           ],
         ),
         const SizedBox(height: 2),
@@ -359,6 +399,31 @@ class _LikeButton extends StatelessWidget {
         padding: const EdgeInsets.all(6),
         child: Icon(
           liked ? Icons.favorite_rounded : Icons.favorite_border_rounded,
+          color: Colors.white,
+          size: 34,
+        ),
+      ),
+    );
+  }
+}
+
+class _PlayerActionButton extends StatelessWidget {
+  final IconData icon;
+  final VoidCallback onTap;
+
+  const _PlayerActionButton({
+    required this.icon,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.all(6),
+        child: Icon(
+          icon,
           color: Colors.white,
           size: 34,
         ),
@@ -507,13 +572,11 @@ class _LyricsCard extends StatelessWidget {
 }
 
 class _SongOptionsDialog extends StatelessWidget {
-  final VoidCallback onAiCover;
   final VoidCallback onAddToPlaylist;
   final VoidCallback onRename;
   final VoidCallback onDelete;
 
   const _SongOptionsDialog({
-    required this.onAiCover,
     required this.onAddToPlaylist,
     required this.onRename,
     required this.onDelete,
@@ -550,11 +613,6 @@ class _SongOptionsDialog extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _MenuAction(
-              icon: Icons.mic_none_rounded,
-              label: 'AI Cover',
-              onTap: onAiCover,
-            ),
             _MenuAction(
               icon: Icons.add_box_outlined,
               label: 'Add to Playlist',

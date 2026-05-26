@@ -18,8 +18,9 @@ class GenerationScreen extends ConsumerWidget {
     final st = ref.watch(generationFormProvider);
     final ctrl = ref.read(generationFormProvider.notifier);
 
-    // Listen for error messages and show a SnackBar.
+    // Listen for state changes: errors and submission completion
     ref.listen<GenerationFormState>(generationFormProvider, (prev, next) {
+      // Handle error messages
       if (next.errorMessage != null && next.errorMessage != prev?.errorMessage) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -28,6 +29,13 @@ class GenerationScreen extends ConsumerWidget {
           ),
         );
         ctrl.clearError();
+      }
+
+      // Handle submission completion to close dialog
+      if (prev != null && prev.isSubmitting && !next.isSubmitting) {
+        if (context.mounted && Navigator.of(context).canPop()) {
+          Navigator.of(context).pop();
+        }
       }
     });
 
@@ -85,11 +93,17 @@ class GenerationScreen extends ConsumerWidget {
                               : 'Create with Lyrics',
                           isLoading: st.isSubmitting,
                           onPressed: () async {
-                            final song = await ctrl.submit();
-                            if (song != null && context.mounted) {
+                            if (!context.mounted) return;
+                            showDialog(
+                              context: context,
+                              barrierDismissible: false,
+                              builder: (_) => const _GeneratingDialog(),
+                            );
+                            await ctrl.submit();
+                            if (context.mounted) {
                               ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  content: Text('Created "${song.title}"'),
+                                const SnackBar(
+                                  content: Text('Track created successfully!'),
                                   behavior: SnackBarBehavior.floating,
                                 ),
                               );
@@ -857,6 +871,71 @@ class _PickerSheetState extends State<_PickerSheet> {
           const SizedBox(height: 26),
           _DoneButton(onPressed: () => Navigator.of(context).pop()),
         ],
+      ),
+    );
+  }
+}
+
+// ─── Generating dialog ───────────────────────────────────────────────────────
+
+class _GeneratingDialog extends StatelessWidget {
+  const _GeneratingDialog();
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      backgroundColor: Colors.transparent,
+      insetPadding: const EdgeInsets.symmetric(horizontal: 24),
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 48, horizontal: 24),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(28),
+          gradient: const LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              Color(0xFF785C91),
+              Color(0xFF4A1E60),
+            ],
+          ),
+          boxShadow: const [
+            BoxShadow(
+              offset: Offset(0, 20),
+              blurRadius: 40,
+              color: Color(0x4A000000),
+            ),
+          ],
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              'Generating your track...',
+              style: AppTypography.title.copyWith(
+                fontSize: 20,
+                color: Colors.white,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 32),
+            const SizedBox(
+              width: 60,
+              height: 60,
+              child: CircularProgressIndicator(
+                color: Colors.white,
+                strokeWidth: 3,
+              ),
+            ),
+            const SizedBox(height: 28),
+            Text(
+              'Please, wait',
+              style: AppTypography.body.copyWith(
+                color: AppColors.white75,
+                fontSize: 16,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

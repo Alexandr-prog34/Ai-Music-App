@@ -1,5 +1,8 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/device_id/device_id_service.dart';
+import '../../../core/network/dio_client.dart';
+import '../../../core/network/tracks_api.dart';
 import '../../../core/models/song.dart';
 import '../../library/data/song_repository_impl.dart';
 
@@ -87,5 +90,16 @@ class PlayerController extends FamilyAsyncNotifier<PlayerState, String> {
       await repo.save(updated);
       return current.copyWith(song: updated);
     });
+  }
+
+  Future<String> getDownloadUrl() async {
+    final current = state.valueOrNull;
+    if (current == null) {
+      throw StateError('Song is not loaded');
+    }
+
+    final deviceId = await DeviceIdService.instance.getDeviceId();
+    final tracksApi = TracksApi(createDio(deviceId));
+    return tracksApi.getDownloadUrl(current.song.id);
   }
 }
