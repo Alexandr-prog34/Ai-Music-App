@@ -23,6 +23,9 @@ func scanTrack(s rowScanner) (domain.Track, error) {
 	var t domain.Track
 
 	var tags sql.NullString
+	var audioURL sql.NullString
+	var streamURL sql.NullString
+	var imageURL sql.NullString
 
 	var audioBucket string
 	var audioKey sql.NullString
@@ -34,6 +37,7 @@ func scanTrack(s rowScanner) (domain.Track, error) {
 		&t.ID, &t.JobID, &t.SunoAudioID, &t.Title, &tags, &durationSec,
 		&audioBucket, &audioKey,
 		&imageBucket, &imageKey,
+		&audioURL, &streamURL, &imageURL,
 		&t.IsFavorite, &t.CreatedAt, &t.UpdatedAt,
 	)
 	if err != nil {
@@ -59,6 +63,17 @@ func scanTrack(s rowScanner) (domain.Track, error) {
 		t.ImageBucket = &b
 		t.ImageKey = &k
 	}
+	if audioURL.Valid {
+		t.AudioURL = audioURL.String
+	}
+	if streamURL.Valid {
+		v := streamURL.String
+		t.StreamURL = &v
+	}
+	if imageURL.Valid {
+		v := imageURL.String
+		t.ImageURL = &v
+	}
 
 	return t, nil
 }
@@ -82,12 +97,26 @@ func (r *TrackRepo) CreateTrack(ctx context.Context, track domain.Track) (domain
 		}
 	}
 
+	var audioURL any
+	if track.AudioURL != "" {
+		audioURL = track.AudioURL
+	}
+	var streamURL any
+	if track.StreamURL != nil {
+		streamURL = *track.StreamURL
+	}
+	var imageURL any
+	if track.ImageURL != nil {
+		imageURL = *track.ImageURL
+	}
+
 	row := r.db.QueryRowxContext(ctx, qTrackUpsert,
 		track.ID, track.JobID,
 		track.SunoAudioID, track.Title, tags,
 		track.Duration.Seconds(),
 		track.AudioBucket, track.AudioKey,
 		imgBucket, imgKey,
+		audioURL, streamURL, imageURL,
 		track.IsFavorite,
 	)
 	out, err := scanTrack(row)
@@ -108,6 +137,27 @@ func (r *TrackRepo) GetTrack(ctx context.Context, id uuid.UUID) (domain.Track, e
 		return domain.Track{}, fmt.Errorf("get track: %w", err)
 	}
 	return t, nil
+}
+
+func (r *TrackRepo) ListTracksByJobID(ctx context.Context, jobID uuid.UUID) ([]domain.Track, error) {
+	rows, err := r.db.QueryxContext(ctx, qTracksByJobID, jobID)
+	if err != nil {
+		return nil, fmt.Errorf("list tracks by job: %w", err)
+	}
+	defer rows.Close()
+
+	tracks := make([]domain.Track, 0)
+	for rows.Next() {
+		track, scanErr := scanTrack(rows)
+		if scanErr != nil {
+			return nil, fmt.Errorf("scan track by job: %w", scanErr)
+		}
+		tracks = append(tracks, track)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("list tracks by job rows: %w", err)
+	}
+	return tracks, nil
 }
 
 // ВНИМАНИЕ: как и с jobs — ListTracks принимает deviceID (installID) из ports,

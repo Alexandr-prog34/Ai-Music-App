@@ -3,7 +3,6 @@ package handlers
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"log/slog"
 	"net/http"
 
@@ -11,6 +10,7 @@ import (
 
 	"github.com/AI-Music-App001/Ai-Music-Generator/services/internal/domain"
 	"github.com/AI-Music-App001/Ai-Music-Generator/services/internal/httpapi/dto"
+	"github.com/AI-Music-App001/Ai-Music-Generator/services/internal/view"
 )
 
 // интерфейс сервиса — то, что нужно handler'у.
@@ -39,17 +39,8 @@ func (h *JobsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case http.MethodPost:
 		h.handleCreateJob(w, r)
 	default:
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		writeMethodNotAllowed(w)
 	}
-}
-
-// deviceIDFromRequest — парсит обязательный хедер X-Device-Id.
-func deviceIDFromRequest(r *http.Request) (uuid.UUID, error) {
-	raw := r.Header.Get("X-Device-Id")
-	if raw == "" {
-		return uuid.Nil, errors.New("X-Device-Id is required")
-	}
-	return uuid.Parse(raw)
 }
 
 // POST /jobs
@@ -59,13 +50,13 @@ func (h *JobsHandler) handleCreateJob(w http.ResponseWriter, r *http.Request) {
 	// X-Device-Id — обязательный хедер
 	deviceID, err := deviceIDFromRequest(r)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		writeRequestError(w, err)
 		return
 	}
 
 	var req dto.CreateJobRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "invalid json: "+err.Error(), http.StatusBadRequest)
+		writeBadRequest(w, "invalid json: "+err.Error())
 		return
 	}
 
@@ -75,7 +66,7 @@ func (h *JobsHandler) handleCreateJob(w http.ResponseWriter, r *http.Request) {
 
 	//  добавили валидацию до вызова сервиса
 	if err := params.Validate(); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		writeBadRequest(w, err.Error())
 		return
 	}
 
@@ -88,7 +79,7 @@ func (h *JobsHandler) handleCreateJob(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// domain -> dto
-	resp := dto.NewJob(job)
+	resp := view.NewJob(job)
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)

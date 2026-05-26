@@ -54,6 +54,11 @@ func (s *JobService) CreateJob(ctx context.Context, installID uuid.UUID, params 
 
 	// 2) потом положить в очередь
 	if err := s.jobQueue.EnqueueJob(ctx, created.ID); err != nil {
+		if markErr := created.MarkFailed(created.UpdatedAt, "enqueue job failed: "+err.Error()); markErr == nil {
+			if _, updateErr := s.jobRepo.UpdateJob(ctx, created); updateErr != nil {
+				return domain.Job{}, updateErr
+			}
+		}
 		return domain.Job{}, err
 	}
 

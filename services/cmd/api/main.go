@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"log"
 	"log/slog"
 	"net"
@@ -13,107 +14,126 @@ import (
 	_ "github.com/lib/pq"
 	"github.com/redis/go-redis/v9"
 
+	"github.com/AI-Music-App001/Ai-Music-Generator/services/internal/events"
 	"github.com/AI-Music-App001/Ai-Music-Generator/services/internal/httpapi/handlers"
-	"github.com/AI-Music-App001/Ai-Music-Generator/services/internal/ports"
 	"github.com/AI-Music-App001/Ai-Music-Generator/services/internal/queue"
-	"github.com/AI-Music-App001/Ai-Music-Generator/services/internal/repo/noop"
+	"github.com/AI-Music-App001/Ai-Music-Generator/services/internal/realtime"
 	"github.com/AI-Music-App001/Ai-Music-Generator/services/internal/repo/postgres"
 	"github.com/AI-Music-App001/Ai-Music-Generator/services/internal/service"
+	"github.com/AI-Music-App001/Ai-Music-Generator/services/internal/storage"
 )
 
 func main() {
 	port := getenv("API_PORT", "8080")
-	postgresDSN := os.Getenv("POSTGRES_DSN")
+	postgresDSN := mustEnv("POSTGRES_DSN")
 	redisAddr := getenv("REDIS_ADDR", "redis:6379")
+	jobQueueKey := getenv("JOB_QUEUE_KEY", "jobs")
+	callbackQueueKey := getenv("SUNO_CALLBACK_QUEUE_KEY", "suno_callbacks")
+	callbackSecret := mustEnv("SUNO_CALLBACK_SECRET")
+	notifierChannel := getenv("NOTIFIER_CHANNEL", events.DefaultChannel)
 
-	// ---------- Logger ----------
 	logger := slog.Default()
-
-	// ---------- Redis ----------
-	rdb := redis.NewClient(&redis.Options{
-		Addr: redisAddr,
-	})
-
 	ctx := context.Background()
+
+	rdb := redis.NewClient(&redis.Options{Addr: redisAddr})
 	if err := rdb.Ping(ctx).Err(); err != nil {
 		log.Fatalf("api: redis ping failed: %v", err)
 	}
 
-	//  конструктор очереди требует logger
-	jobQueue := queue.NewRedisJobQueue(rdb, "jobs", logger)
+	db, err := postgres.Open(ctx, postgresDSN, postgres.DefaultPoolConfig())
+	if err != nil {
+		log.Fatalf("api: postgres open failed: %v", err)
+	}
+	defer db.Close()
 
-	var jobRepo ports.JobRepository = noop.NewJobRepo()
-	var userRepo ports.UserRepository
-
-	if postgresDSN == "" {
-		logger.Warn("POSTGRES_DSN is empty, using noop job repository")
-	} else {
-		db, err := postgres.Open(ctx, postgresDSN, postgres.DefaultPoolConfig())
-		if err != nil {
-			logger.Warn("postgres unavailable, using noop job repository", "err", err)
-		} else {
-			defer db.Close()
-			jobRepo = postgres.NewJobRepo(db)
-			userRepo = postgres.NewUserRepo(db)
-			logger.Info("postgres repositories enabled")
-		}
+	objectStorage, err := storage.NewMinIOObjectStorage(ctx, storage.Config{
+		Endpoint:       mustEnv("S3_ENDPOINT"),
+		PublicEndpoint: getenv("S3_PUBLIC_ENDPOINT", mustEnv("S3_ENDPOINT")),
+		AccessKey:      mustEnv("S3_ACCESS_KEY"),
+		SecretKey:      mustEnv("S3_SECRET_KEY"),
+		Bucket:         mustEnv("S3_BUCKET"),
+	})
+	if err != nil {
+		log.Fatalf("api: storage init failed: %v", err)
 	}
 
-	// ---------- Сервис и handler для /jobs ----------
-	jobSvc := service.NewJobService(jobRepo, jobQueue, userRepo)
-	jobsHandler := handlers.NewJobsHandler(jobSvc, logger)
+	jobQueue := queue.NewRedisJobQueue(rdb, jobQueueKey, logger)
+	sunoCallbackQueue := queue.NewRedisSunoCallbackQueue(rdb, callbackQueueKey, logger)
+	jobRepo := postgres.NewJobRepo(db)
+	userRepo := postgres.NewUserRepo(db)
+	trackRepo := postgres.NewTrackRepo(db)
 
-	//  handler для callback'ов Suno (локальная обработка suno.ErrInvalidCallback)
-	sunoSecret := os.Getenv("SUNO_CALLBACK_SECRET")
-	sunoCallbackHandler := handlers.NewSunoCallbackHandler(sunoSecret, logger)
+	jobWriteSvc := service.NewJobService(jobRepo, jobQueue, userRepo)
+	jobReadSvc := service.NewJobReadService(jobRepo, userRepo, trackRepo, objectStorage)
+	trackSvc := service.NewTrackService(userRepo, jobRepo, trackRepo, objectStorage)
 
-	// ---------- HTTP mux ----------
+	jobsHandler := handlers.NewJobsHandler(jobWriteSvc, logger)
+	listJobsHandler := handlers.NewListJobsHandler(jobReadSvc, logger)
+	getJobHandler := handlers.NewGetJobHandler(jobReadSvc, logger)
+	listTracksHandler := handlers.NewListTracksHandler(trackSvc, logger)
+	getTrackHandler := handlers.NewGetTrackHandler(trackSvc, logger)
+	deleteTrackHandler := handlers.NewDeleteTrackHandler(trackSvc, logger)
+	favoriteTrackHandler := handlers.NewFavoriteTrackHandler(trackSvc, true, logger)
+	unfavoriteTrackHandler := handlers.NewFavoriteTrackHandler(trackSvc, false, logger)
+	downloadTrackHandler := handlers.NewDownloadTrackHandler(trackSvc, logger)
+	sunoCallbackHandler := handlers.NewSunoCallbackHandler(callbackSecret, sunoCallbackQueue, logger)
+
+	hub := realtime.NewHub(logger)
+	wsHandler := handlers.NewWSHandler(userRepo, hub, logger)
+	subscriber := realtime.NewSubscriber(rdb, notifierChannel, hub, jobReadSvc, logger)
+	go func() {
+		if err := subscriber.Run(ctx); err != nil && err != context.Canceled {
+			logger.Error("job update subscriber stopped", "err", err)
+		}
+	}()
+
 	mux := http.NewServeMux()
-
-	// /health
-	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte("ok"))
+	healthHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 	})
-
-	// /ready
-	mux.HandleFunc("/ready", func(w http.ResponseWriter, r *http.Request) {
+	readyHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
 		defer cancel()
 
-		if postgresDSN == "" {
-			http.Error(w, "POSTGRES_DSN is empty", http.StatusServiceUnavailable)
-			return
-		}
 		if err := checkPostgres(ctx, postgresDSN); err != nil {
-			http.Error(w, "postgres: "+err.Error(), http.StatusServiceUnavailable)
-			return
-		}
-
-		if redisAddr == "" {
-			http.Error(w, "REDIS_ADDR is empty", http.StatusServiceUnavailable)
+			writeJSON(w, http.StatusServiceUnavailable, map[string]string{
+				"status":  "unavailable",
+				"message": "postgres: " + err.Error(),
+			})
 			return
 		}
 		if err := checkTCP(ctx, redisAddr); err != nil {
-			http.Error(w, "redis: "+err.Error(), http.StatusServiceUnavailable)
+			writeJSON(w, http.StatusServiceUnavailable, map[string]string{
+				"status":  "unavailable",
+				"message": "redis: " + err.Error(),
+			})
 			return
 		}
 
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte("ready"))
+		writeJSON(w, http.StatusOK, map[string]string{"status": "ready"})
 	})
 
-	// /jobs
-	mux.Handle("/jobs", jobsHandler)
+	for _, prefix := range []string{"", "/api/v1"} {
+		mux.Handle("GET "+route(prefix, "/health"), healthHandler)
+		mux.Handle("GET "+route(prefix, "/ready"), readyHandler)
+		mux.Handle("GET "+route(prefix, "/ws"), wsHandler)
+		mux.Handle("POST "+route(prefix, "/jobs"), jobsHandler)
+		mux.Handle("GET "+route(prefix, "/jobs"), listJobsHandler)
+		mux.Handle("GET "+route(prefix, "/jobs/{id}"), getJobHandler)
+		mux.Handle("GET "+route(prefix, "/tracks"), listTracksHandler)
+		mux.Handle("GET "+route(prefix, "/tracks/{id}"), getTrackHandler)
+		mux.Handle("DELETE "+route(prefix, "/tracks/{id}"), deleteTrackHandler)
+		mux.Handle("PUT "+route(prefix, "/tracks/{id}/favorite"), favoriteTrackHandler)
+		mux.Handle("DELETE "+route(prefix, "/tracks/{id}/favorite"), unfavoriteTrackHandler)
+		mux.Handle("GET "+route(prefix, "/tracks/{id}/download"), downloadTrackHandler)
+		mux.Handle("POST "+route(prefix, "/suno/callback"), sunoCallbackHandler)
+		mux.Handle("POST "+route(prefix, "/internal/suno/callback"), sunoCallbackHandler)
+	}
 
-	// /suno/callback
-	mux.Handle("/suno/callback", sunoCallbackHandler)
-
-	// ---------- CORS wrapper ----------
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Accept, X-Device-Id")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Accept, X-Device-Id, X-Suno-Callback-Secret")
 
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusNoContent)
@@ -130,12 +150,35 @@ func main() {
 	}
 }
 
+func writeJSON(w http.ResponseWriter, status int, payload any) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	if err := json.NewEncoder(w).Encode(payload); err != nil {
+		slog.Default().Error("api: failed to encode json response", "err", err, "status", status)
+	}
+}
+
+func route(prefix string, path string) string {
+	if prefix == "" {
+		return path
+	}
+	return prefix + path
+}
+
 func getenv(key, def string) string {
 	v := os.Getenv(key)
 	if v == "" {
 		return def
 	}
 	return v
+}
+
+func mustEnv(key string) string {
+	value := os.Getenv(key)
+	if value == "" {
+		log.Fatalf("api: %s is empty", key)
+	}
+	return value
 }
 
 func checkPostgres(ctx context.Context, dsn string) error {
