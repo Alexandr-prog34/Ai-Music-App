@@ -20,7 +20,6 @@ class AppAssets {
   static const genreMore = 'assets/icons/genre_more.png';
 
   // Bottom nav
-  static const navAiCover = 'assets/icons/nav_ai_cover.png';
   static const navCreate = 'assets/icons/nav_create.png';
   static const navLibrary = 'assets/icons/nav_library.png';
 

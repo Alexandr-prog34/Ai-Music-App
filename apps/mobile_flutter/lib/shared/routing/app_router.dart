@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../features/ai_cover/presentation/ai_cover_screen.dart';
 import '../../features/generation/presentation/generation_screen.dart';
 import '../../features/library/presentation/library_screen.dart';
 import '../../features/onboarding/presentation/onboarding_screen.dart';
@@ -43,13 +42,6 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             ),
           ),
           GoRoute(
-            path: Routes.aiCover,
-            pageBuilder: (_, __) => _fadePage(
-              const AiCoverScreen(),
-              name: 'ai-cover',
-            ),
-          ),
-          GoRoute(
             path: Routes.settings,
             pageBuilder: (_, __) => _fadePage(
               const SettingsScreen(),
@@ -76,7 +68,6 @@ class _TabShell extends StatelessWidget {
   const _TabShell({required this.location, required this.child});
 
   AppTab get _activeTab {
-    if (location.startsWith(Routes.aiCover)) return AppTab.aiCover;
     if (location.startsWith(Routes.library)) return AppTab.library;
     return AppTab.create;
   }
@@ -119,5 +110,4 @@ abstract class Routes {
   static const generation = '/generation';
   static const library = '/library';
   static const settings = '/settings';
-  static const aiCover = '/ai-cover';
 }

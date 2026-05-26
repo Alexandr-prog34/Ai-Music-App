@@ -7,7 +7,7 @@ import '../theme/app_colors.dart';
 import '../theme/app_typography.dart';
 import 'app_icon.dart';
 
-enum AppTab { aiCover, create, library }
+enum AppTab { create, library }
 
 /// Floating dark tab bar — solid fill, no BackdropFilter.
 ///
@@ -49,14 +49,6 @@ class AppBottomNav extends StatelessWidget {
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceEvenly,
           children: [
-            _NavItem(
-              asset: AppAssets.navAiCover,
-              label: 'AI COVER',
-              active: active == AppTab.aiCover,
-              onTap: () {
-                if (active != AppTab.aiCover) context.go(Routes.aiCover);
-              },
-            ),
             _NavItem(
               asset: AppAssets.navCreate,
               label: 'CREATE',
@@ -219,8 +211,6 @@ class _NavItemState extends State<_NavItem>
   List<Color> _activeGradient() {
     switch (widget.label) {
       case 'CREATE':
-        return const [Color(0xFF785C91), Color(0xFF4A1E60)];
-      case 'AI COVER':
         return const [Color(0xFF785C91), Color(0xFF4A1E60)];
       case 'LIBRARY':
         return const [Color(0xFF785C91), Color(0xFF4A1E60)];

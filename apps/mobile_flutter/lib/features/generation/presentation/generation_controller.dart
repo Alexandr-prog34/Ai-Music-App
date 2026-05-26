@@ -132,8 +132,8 @@ class GenerationFormController extends Notifier<GenerationFormState> {
       // Tell the library to re-fetch.
       ref.invalidate(songsProvider);
 
-      // Reset form.
-      state = GenerationFormState.initial();
+      // Reset form and explicitly mark as not submitting
+      state = state.copyWith(isSubmitting: false);
       return song;
     } on Exception catch (e) {
       state = state.copyWith(
