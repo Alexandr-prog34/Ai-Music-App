@@ -2,7 +2,6 @@ package handlers
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -64,7 +63,7 @@ func (h *JobsHandler) handleCreateJob(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req dto.CreateJobRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := decodeJSONBody(w, r, maxCreateJobBodySize, &req); err != nil {
 		http.Error(w, "invalid json: "+err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -94,7 +93,7 @@ func (h *JobsHandler) handleCreateJob(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusCreated)
 
 	// не игнорируем encode: логируем ошибку
-	if err := json.NewEncoder(w).Encode(resp); err != nil {
+	if err := writeJSON(w, resp); err != nil {
 		h.logger.Error(
 			"failed to encode create job response",
 			"err", err,
