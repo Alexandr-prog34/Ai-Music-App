@@ -15,8 +15,10 @@ type WSPong struct {
 }
 
 type WSError struct {
-	Type    WSEventType `json:"type"`
-	Message string      `json:"message"`
+	Type WSEventType `json:"type"`
+	Data struct {
+		Message string `json:"message"`
+	} `json:"data"`
 }
 
 type WSJobUpdated struct {
@@ -46,8 +48,7 @@ func NewWSJobUpdated(job view.Job) WSJobUpdated {
 }
 
 func NewWSError(msg string) WSError {
-	return WSError{
-		Type:    WSEventError,
-		Message: msg,
-	}
+	event := WSError{Type: WSEventError}
+	event.Data.Message = msg
+	return event
 }
