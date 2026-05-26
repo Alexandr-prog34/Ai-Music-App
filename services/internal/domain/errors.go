@@ -46,11 +46,12 @@ var (
 	ErrInvalidStatusTransition = errors.New("invalid status transition")
 
 	// Track
-	ErrTrackIDRequired       = errors.New("track.id is required")
-	ErrTrackJobIDRequired    = errors.New("track.job_id is required")
-	ErrTrackSunoAudioIDReq   = errors.New("track.suno_audio_id is required")
-	ErrTrackTitleRequired    = errors.New("track.title is required")
-	ErrTrackAudioURLRequired = errors.New("track.audio_url is required")
+	ErrTrackIDRequired           = errors.New("track.id is required")
+	ErrTrackJobIDRequired        = errors.New("track.job_id is required")
+	ErrTrackSunoAudioIDReq       = errors.New("track.suno_audio_id is required")
+	ErrTrackTitleRequired        = errors.New("track.title is required")
+	ErrTrackAudioStorageRequired = errors.New("track.audio storage (bucket/key) is required")
+	ErrTrackAudioURLRequired     = errors.New("track.audio_url is required")
 
 	// User
 	ErrUserIDRequired        = errors.New("user.id is required")

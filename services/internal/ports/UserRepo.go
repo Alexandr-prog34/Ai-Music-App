@@ -7,7 +7,7 @@ import (
 	"github.com/google/uuid"
 )
 
-type UserRepo interface {
+type UserRepository interface {
 	// GetOrCreateUser — получить пользователя по install_id или создать нового.
 	GetOrCreateUser(ctx context.Context, installID uuid.UUID) (domain.User, error)
 }

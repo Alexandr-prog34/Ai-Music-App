@@ -36,11 +36,19 @@ docker compose -f infra/docker-compose.yml up --build
 
 | Сервис   | Адрес                 | Назначение         |
 | -------- | --------------------- | ------------------ |
-| API      | http://localhost:8080 | backend сервер     |
+| API      | http://localhost:8080 | backend сервер напрямую |
+| Nginx    | http://localhost:8088 | reverse proxy до API |
 | MinIO UI | http://localhost:9001 | файлы / S3 storage |
 | Postgres | localhost:5432        | база данных        |
 | Redis    | localhost:6379        | очередь / кэш      |
 | Swagger  | http://localhost:8081 | визуальная проверка API |
+
+По умолчанию `nginx` публикуется на `8088`, чтобы не конфликтовать с уже занятым `80` портом.
+Если у вас `80` свободен и нужен именно он, задайте в `.env`:
+
+```env
+NGINX_HOST_PORT=80
+```
 
 ---
 
@@ -64,7 +72,24 @@ http://localhost:8081
 curl http://localhost:8080/health
 
 curl http://localhost:8080/ready
+```
 
+Ожидаем:
+
+```
+ok
+ready
+```
+
+## Nginx
+
+Проверка внешнего входа через reverse proxy:
+
+```
+curl http://localhost:8088/health
+
+curl http://localhost:8088/ready
+```
 
 Ожидаем:
 

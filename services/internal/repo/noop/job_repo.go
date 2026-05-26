@@ -10,13 +10,13 @@ import (
 	"github.com/AI-Music-App001/Ai-Music-Generator/services/internal/ports"
 )
 
-//!!!Просто реализовываем интерфейсы репозиториев, пока что просто зашлушки для проверки
-//работы редиски, потом реализуем по нормальному
+// !!!Просто реализовываем интерфейсы репозиториев, пока что просто зашлушки для проверки
+// работы редиски, потом реализуем по нормальному
 var ErrNotImplemented = errors.New("not implemented")
 
 type JobRepo struct{}
 
-func NewJobRepo() ports.JobRepo {
+func NewJobRepo() ports.JobRepository {
 	return &JobRepo{}
 }
 
