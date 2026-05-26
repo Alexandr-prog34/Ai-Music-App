@@ -219,13 +219,13 @@ class _NavItemState extends State<_NavItem>
   List<Color> _activeGradient() {
     switch (widget.label) {
       case 'CREATE':
-        return const [Color(0xFFAA88D3), Color(0xFF8759B7)];
+        return const [Color(0xFF785C91), Color(0xFF4A1E60)];
       case 'AI COVER':
-        return const [Color(0xFF6C4C92), Color(0xFF4F356F)];
+        return const [Color(0xFF785C91), Color(0xFF4A1E60)];
       case 'LIBRARY':
-        return const [Color(0xFF5E4E74), Color(0xFF43334F)];
+        return const [Color(0xFF785C91), Color(0xFF4A1E60)];
       default:
-        return const [Color(0xFF9B78C8), Color(0xFF735194)];
+        return const [Color(0xFF785C91), Color(0xFF4A1E60)];
     }
   }
 }

@@ -42,11 +42,11 @@ class AppColors {
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
     colors: [
-      Color(0xFF34273E),
-      Color(0xFF1C1822),
-      Color(0xFF110E14),
+      Color(0xFF18131F),
+      Color(0xFF120F18),
+      Color(0xFF0B090E),
     ],
-    stops: [0, 0.46, 1],
+    stops: [0.18, 0.56, 1],
   );
 
   // ── Commonly-used white opacities (avoids withOpacity at call-site) ──

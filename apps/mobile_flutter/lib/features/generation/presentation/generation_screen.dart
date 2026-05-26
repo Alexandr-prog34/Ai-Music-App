@@ -332,8 +332,8 @@ class _GenreCard extends StatelessWidget {
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
             colors: [
-              Color(0xFF966EBD),
-              Color(0xFF7747A3),
+              Color(0xFF785C91),
+              Color(0xFF4A1E60),
             ],
           )
         : selected
@@ -596,9 +596,8 @@ class _CreateButton extends StatelessWidget {
             begin: Alignment.centerLeft,
             end: Alignment.centerRight,
             colors: [
-              Color(0x805B4379),
-              Color(0x66352250),
-              Color(0x804B1F66),
+              Color(0xFF785C91),
+              Color(0xFF4A1E60),
             ],
           ),
           border: Border.all(color: const Color(0x2EFFFFFF), width: 0.6),
@@ -703,8 +702,8 @@ class _Pill extends StatelessWidget {
             begin: Alignment.centerLeft,
             end: Alignment.centerRight,
             colors: [
-              Color(0xFF8F69BA),
-              Color(0xFF7B4BA6),
+              Color(0xFF785C91),
+              Color(0xFF4A1E60),
             ],
           )
         : selected
