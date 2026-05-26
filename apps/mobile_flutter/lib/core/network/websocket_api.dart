@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
-import 'package:web_socket_channel/web_socket_channel.dart';
+import 'package:web_socket_channel/io.dart';
 
 import '../../shared/domain/ws_client_message.dart';
 import '../../shared/domain/ws_message.dart';
@@ -10,17 +10,25 @@ class WebSocketApi {
 
   final String url;
 
-  WebSocketChannel? _channel;
+  IOWebSocketChannel? _channel;
 
   StreamController<WsMessage>? _controller;
 
   Timer? _pingTimer;
 
-  WebSocketApi(this.url);
+  bool _isConnecting = false;
+
+  bool _disposed = false;
+
+  WebSocketApi(String rawUrl)
+      : url = rawUrl
+            .replaceFirst('http://', 'ws://')
+            .replaceFirst('https://', 'wss://');
 
   Stream<WsMessage> connect() {
 
-    _controller ??= StreamController.broadcast();
+    _controller ??=
+        StreamController<WsMessage>.broadcast();
 
     _connectInternal();
 
@@ -29,42 +37,78 @@ class WebSocketApi {
 
   void _connectInternal() {
 
-    _channel = WebSocketChannel.connect(
-      Uri.parse(url),
-    );
+    if (_isConnecting || _disposed) {
+      return;
+    }
 
-    _startPing();
+    _isConnecting = true;
 
-    _channel!.stream.listen(
+    try {
 
-      (event) {
+      _channel = IOWebSocketChannel.connect(
+        Uri.parse(url),
+      );
 
-        final json = jsonDecode(event);
+      _startPing();
 
-        final message = WsMessage.fromJson(json);
+      _channel!.stream.listen(
 
-        _controller?.add(message);
+        (event) {
 
-      },
+          final json = jsonDecode(event);
 
-      onDone: _reconnect,
+          final message =
+              WsMessage.fromJson(json);
 
-      onError: (_) => _reconnect(),
+          _controller?.add(message);
+        },
 
-    );
+        onDone: () {
+
+          _isConnecting = false;
+
+          _reconnect();
+        },
+
+        onError: (_) {
+
+          _isConnecting = false;
+
+          _reconnect();
+        },
+      );
+
+      _isConnecting = false;
+
+    } catch (_) {
+
+      _isConnecting = false;
+
+      _reconnect();
+    }
   }
 
   void _reconnect() {
 
+    if (_disposed) {
+      return;
+    }
+
     Future.delayed(
+
       const Duration(seconds: 2),
+
       () {
+
+        if (_disposed) {
+          return;
+        }
 
         _connectInternal();
 
       },
     );
-}
+  }
 
   void _startPing() {
 
@@ -79,11 +123,14 @@ class WebSocketApi {
         ping();
 
       },
-
     );
   }
 
   void ping() {
+
+    if (_disposed) {
+      return;
+    }
 
     _channel?.sink.add(
 
@@ -94,16 +141,21 @@ class WebSocketApi {
         ).toJson(),
 
       ),
-
     );
   }
 
   void disconnect() {
+
+    _disposed = true;
 
     _pingTimer?.cancel();
 
     _channel?.sink.close();
 
     _channel = null;
+
+    _controller?.close();
+
+    _controller = null;
   }
 }

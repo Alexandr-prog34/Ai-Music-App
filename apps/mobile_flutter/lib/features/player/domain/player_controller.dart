@@ -84,12 +84,8 @@ class PlayerController extends FamilyAsyncNotifier<PlayerState, String> {
     final current = state.valueOrNull;
     if (current == null) return;
 
-    state = await AsyncValue.guard(() async {
-      final repo = ref.read(songRepositoryProvider);
-      final updated = current.song.copyWith(title: nextTitle);
-      await repo.save(updated);
-      return current.copyWith(song: updated);
-    });
+    final updated = current.song.copyWith(title: nextTitle);
+    state = AsyncData(current.copyWith(song: updated));
   }
 
   Future<String> getDownloadUrl() async {

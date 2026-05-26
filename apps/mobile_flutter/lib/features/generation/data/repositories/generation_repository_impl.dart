@@ -3,6 +3,7 @@ import '../../../../core/network/websocket_api.dart';
 
 import '../../../../shared/domain/create_job_request.dart';
 import '../../../../shared/domain/job.dart';
+import '../../../../shared/domain/ws_message.dart';
 
 import '../../domain/repositories/generation_repository.dart';
 
@@ -37,7 +38,7 @@ class GenerationRepositoryImpl implements GenerationRepository {
     return wsApi.connect()
 
         .where(
-          (message) => message.type == "job_updated" && message.job != null,
+          (message) => message.type == WsType.jobUpdated && message.job != null,
         )
 
         .map(

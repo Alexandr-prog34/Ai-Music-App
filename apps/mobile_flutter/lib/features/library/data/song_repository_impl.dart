@@ -1,88 +1,76 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/device_id/device_id_service.dart';
 import '../../../core/models/song.dart';
+import '../../../core/network/dio_client.dart';
+import '../../../core/network/tracks_api.dart';
 import '../../../core/repositories/song_repository.dart';
+import '../../../shared/domain/track.dart';
 
-/// In-memory implementation of [SongRepository].
-///
-/// Seeds two stub songs so the UI isn't empty on first launch.
-/// Replace this class with a real persistence layer (SQLite, Hive, API)
-/// when the backend is ready — the rest of the app won't change.
-class InMemorySongRepository implements SongRepository {
-  final Map<String, Song> _songs = {
-    '1': Song(
-      id: '1',
-      title: 'Untitled #1',
-      mood: 'Happy',
-      genre: 'Rock',
-      lyrics: 'Lyrics for Untitled #1...',
-      duration: const Duration(minutes: 3, seconds: 24),
-      createdAt: DateTime(2025, 1, 15),
-    ),
-    '2': Song(
-      id: '2',
-      title: 'Untitled #2',
-      mood: 'Melancholic',
-      genre: 'Jazz',
-      lyrics: 'Lyrics for Untitled #2...',
-      duration: const Duration(minutes: 4, seconds: 12),
-      createdAt: DateTime(2025, 1, 20),
-    ),
-  };
-
-  final Set<String> _likedIds = {'1', '2'};
-
-  int _nextId = 3;
-
-  @override
-  Future<List<Song>> getAll() async {
-    final list = _songs.values.toList()
-      ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
-    return list;
+class BackendSongRepository implements SongRepository {
+  Future<TracksApi> _api() async {
+    final deviceId = await DeviceIdService.instance.getDeviceId();
+    return TracksApi(createDio(deviceId));
   }
 
   @override
-  Future<Song?> getById(String id) async => _songs[id];
+  Future<List<Song>> getAll() async {
+    final tracks = await (await _api()).listTracks(limit: 100);
+    return tracks.map(_songFromTrack).toList();
+  }
+
+  @override
+  Future<Song?> getById(String id) async {
+    try {
+      return _songFromTrack(await (await _api()).getTrack(id));
+    } catch (_) {
+      return null;
+    }
+  }
 
   @override
   Future<Song> save(Song song) async {
-    final saved = song.id.isEmpty
-        ? Song(
-            id: '${_nextId++}',
-            title: song.title,
-            mood: song.mood,
-            genre: song.genre,
-            lyrics: song.lyrics,
-            coverPath: song.coverPath,
-            duration: song.duration,
-            createdAt: DateTime.now(),
-          )
-        : song;
-    _songs[saved.id] = saved;
-    return saved;
+    if (song.id.isEmpty) {
+      throw StateError('Songs are created through generation jobs');
+    }
+    return song;
   }
 
   @override
   Future<void> delete(String id) async {
-    _songs.remove(id);
-    _likedIds.remove(id);
+    await (await _api()).deleteTrack(id);
   }
 
   @override
-  Future<Set<String>> getLikedIds() async => Set.unmodifiable(_likedIds);
+  Future<Set<String>> getLikedIds() async {
+    final tracks = await (await _api()).listTracks(favorite: true, limit: 100);
+    return tracks.map((track) => track.id).toSet();
+  }
 
   @override
   Future<bool> toggleLike(String songId) async {
-    if (_likedIds.contains(songId)) {
-      _likedIds.remove(songId);
+    final api = await _api();
+    final track = await api.getTrack(songId);
+    if (track.isFavorite) {
+      await api.removeFavorite(songId);
       return false;
     }
-    _likedIds.add(songId);
+    await api.addFavorite(songId);
     return true;
+  }
+
+  Song _songFromTrack(Track track) {
+    return Song(
+      id: track.id,
+      title: track.title,
+      genre: track.tags,
+      coverPath: track.imageUrl,
+      duration: Duration(milliseconds: (track.durationSec * 1000).round()),
+      createdAt: track.createdAt,
+    );
   }
 }
 
-/// Global provider — override this in tests or when switching to a real DB.
 final songRepositoryProvider = Provider<SongRepository>((ref) {
-  return InMemorySongRepository();
+  return BackendSongRepository();
 });

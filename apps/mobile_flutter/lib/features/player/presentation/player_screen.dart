@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -57,7 +59,6 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
     }
 
     await ctrl.renameSong(nextTitle.trim());
-    ref.invalidate(songsProvider);
   }
 
   Future<void> _openDeleteDialog(Song song) async {
@@ -125,9 +126,43 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
     if (action == null || !mounted) return;
 
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('$action is not connected yet'),
+      const SnackBar(
+        content: Text('Song cover editing is coming soon'),
         behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
+  Future<void> _openAdjacentSong(Song currentSong, int delta) async {
+    final songs = await ref.read(songRepositoryProvider).getAll();
+    if (!mounted || songs.length < 2) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('No other songs in queue'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+
+    final currentIndex = songs.indexWhere((song) => song.id == currentSong.id);
+    if (currentIndex == -1) return;
+
+    final nextIndex = (currentIndex + delta + songs.length) % songs.length;
+    final nextSong = songs[nextIndex];
+
+    Navigator.of(context, rootNavigator: true).pushReplacement(
+      PageRouteBuilder(
+        pageBuilder: (_, __, ___) => PlayerScreen(
+          songId: nextSong.id,
+          title: nextSong.title,
+        ),
+        transitionDuration: const Duration(milliseconds: 220),
+        reverseTransitionDuration: const Duration(milliseconds: 180),
+        transitionsBuilder: (_, animation, __, child) {
+          return FadeTransition(opacity: animation, child: child);
+        },
       ),
     );
   }
@@ -211,6 +246,8 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
                   onMore: () => _openSongOptions(state, ctrl),
                   onEditPicture: _openEditPictureDialog,
                   onDownload: () => _downloadTrack(ctrl, state.song),
+                  onPrevious: () => _openAdjacentSong(state.song, -1),
+                  onNext: () => _openAdjacentSong(state.song, 1),
                 ),
               ),
             ),
@@ -228,6 +265,8 @@ class _PlayerBody extends StatelessWidget {
   final VoidCallback onMore;
   final VoidCallback onEditPicture;
   final VoidCallback onDownload;
+  final VoidCallback onPrevious;
+  final VoidCallback onNext;
 
   const _PlayerBody({
     required this.state,
@@ -236,6 +275,8 @@ class _PlayerBody extends StatelessWidget {
     required this.onMore,
     required this.onEditPicture,
     required this.onDownload,
+    required this.onPrevious,
+    required this.onNext,
   });
 
   @override
@@ -296,11 +337,11 @@ class _PlayerBody extends StatelessWidget {
         Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            _ControlIcon(icon: Icons.skip_previous_rounded, onTap: () {}),
+            _ControlIcon(icon: Icons.skip_previous_rounded, onTap: onPrevious),
             const SizedBox(width: 22),
             _PlayButton(isPlaying: state.isPlaying, onTap: ctrl.togglePlay),
             const SizedBox(width: 22),
-            _ControlIcon(icon: Icons.skip_next_rounded, onTap: () {}),
+            _ControlIcon(icon: Icons.skip_next_rounded, onTap: onNext),
           ],
         ),
         const SizedBox(height: 12),
@@ -987,22 +1028,7 @@ class _PlaylistChoiceTile extends StatelessWidget {
       onTap: onTap,
       child: Row(
         children: [
-          Container(
-            width: 44,
-            height: 44,
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(14),
-              gradient: const LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [
-                  Color(0xFF5E5864),
-                  Color(0xFF2F2936),
-                ],
-              ),
-              border: Border.all(color: AppColors.white12, width: 0.6),
-            ),
-          ),
+          _SmallPlaylistCover(coverPath: playlist.coverPath),
           const SizedBox(width: 14),
           Expanded(
             child: Text(
@@ -1017,6 +1043,43 @@ class _PlaylistChoiceTile extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _SmallPlaylistCover extends StatelessWidget {
+  final String? coverPath;
+
+  const _SmallPlaylistCover({this.coverPath});
+
+  @override
+  Widget build(BuildContext context) {
+    final path = coverPath?.trim();
+    final hasCover = path != null && path.isNotEmpty;
+
+    return Container(
+      width: 44,
+      height: 44,
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(14),
+        gradient: const LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [
+            Color(0xFF5E5864),
+            Color(0xFF2F2936),
+          ],
+        ),
+        border: Border.all(color: AppColors.white12, width: 0.6),
+      ),
+      child: hasCover
+          ? Image.file(
+              File(path),
+              fit: BoxFit.cover,
+              errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+            )
+          : null,
     );
   }
 }

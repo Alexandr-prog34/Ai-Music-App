@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"strings"
 	"time"
+	"crypto/tls"
 
 	"github.com/AI-Music-App001/Ai-Music-Generator/services/internal/domain"
 	"github.com/AI-Music-App001/Ai-Music-Generator/services/internal/ports"
@@ -101,6 +102,12 @@ func NewClient(cfg ClientConfig) *Client {
 		apiKey:  strings.TrimSpace(cfg.APIKey),
 		httpClient: &http.Client{
 			Timeout: timeout,
+
+			Transport: &http.Transport{
+				TLSClientConfig: &tls.Config{
+					InsecureSkipVerify: true,
+				},
+			},
 		},
 	}
 }
