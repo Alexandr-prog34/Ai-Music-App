@@ -1,7 +1,7 @@
 package postgres
 
-const trackColumns = "id, job_id, suno_audio_id, title, tags, duration_sec, audio_bucket, audio_key, image_bucket, image_key, is_favorite, created_at, updated_at"
-const trackColumnsT = "t.id, t.job_id, t.suno_audio_id, t.title, t.tags, t.duration_sec, t.audio_bucket, t.audio_key, t.image_bucket, t.image_key, t.is_favorite, t.created_at, t.updated_at"
+const trackColumns = "id, job_id, suno_audio_id, title, tags, duration_sec, audio_bucket, audio_key, image_bucket, image_key, audio_url, stream_url, image_url, is_favorite, created_at, updated_at"
+const trackColumnsT = "t.id, t.job_id, t.suno_audio_id, t.title, t.tags, t.duration_sec, t.audio_bucket, t.audio_key, t.image_bucket, t.image_key, t.audio_url, t.stream_url, t.image_url, t.is_favorite, t.created_at, t.updated_at"
 
 const qTrackUpsert = `
 INSERT INTO tracks (
@@ -10,9 +10,10 @@ INSERT INTO tracks (
   duration_sec,
   audio_bucket, audio_key,
   image_bucket, image_key,
+  audio_url, stream_url, image_url,
   is_favorite
 )
-VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
 ON CONFLICT (job_id, suno_audio_id) DO UPDATE
 SET
   title = EXCLUDED.title,
@@ -33,12 +34,16 @@ SET
     WHEN EXCLUDED.image_key IS NULL THEN tracks.image_bucket
     ELSE EXCLUDED.image_bucket
   END,
-  image_key = COALESCE(EXCLUDED.image_key, tracks.image_key)
+  image_key = COALESCE(EXCLUDED.image_key, tracks.image_key),
+  audio_url = COALESCE(EXCLUDED.audio_url, tracks.audio_url),
+  stream_url = COALESCE(EXCLUDED.stream_url, tracks.stream_url),
+  image_url = COALESCE(EXCLUDED.image_url, tracks.image_url)
 
 RETURNING ` + trackColumns + `;
 `
 
 const qTrackGet = "SELECT " + trackColumns + " FROM tracks WHERE id = $1;"
+const qTracksByJobID = "SELECT " + trackColumns + " FROM tracks WHERE job_id = $1 ORDER BY created_at ASC;"
 
 const qTrackDelete = `
 DELETE FROM tracks t

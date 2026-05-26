@@ -12,6 +12,7 @@ type JobRepository interface {
 	UpdateJob(ctx context.Context, job domain.Job) (domain.Job, error)
 
 	GetJob(ctx context.Context, id uuid.UUID) (domain.Job, error)
+	GetJobBySunoTaskID(ctx context.Context, taskID string) (domain.Job, error)
 
 	// ListJobs — по контракту listjobs. Возвращаем:
 	// - список

@@ -33,6 +33,10 @@ func (r *JobRepo) GetJob(ctx context.Context, id uuid.UUID) (domain.Job, error) 
 	return domain.Job{}, ErrNotImplemented
 }
 
+func (r *JobRepo) GetJobBySunoTaskID(ctx context.Context, taskID string) (domain.Job, error) {
+	return domain.Job{}, ErrNotImplemented
+}
+
 func (r *JobRepo) ListJobs(ctx context.Context, deviceID uuid.UUID, status *domain.JobStatus, limit, offset int) ([]domain.Job, int, error) {
 	return nil, 0, ErrNotImplemented
 }

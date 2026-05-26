@@ -16,7 +16,8 @@ info:
     ```
 
     ### Flow генерации
-    1. Flutter при старте открывает WebSocket: `ws://host/api/v1/ws?device_id=<uuid>`
+    1. Flutter при старте открывает WebSocket: `ws://host/ws?device_id=<uuid>`
+       Совместимый alias также поддерживается: `ws://host/api/v1/ws?device_id=<uuid>`
     2. Flutter отправляет `POST /jobs` → получает job (status=queued)
     3. Worker забирает из Redis → `POST api.sunoapi.org/api/v1/generate` с callBackUrl
     4. Worker ставит job.status=processing → **WS push** → Flutter видит "генерируется..."
@@ -48,7 +49,9 @@ info:
 
 servers:
   - url: http://localhost:8080
-    description: Local dev
+    description: Local dev, direct API
+  - url: http://localhost:8080/api/v1
+    description: Compatibility alias for clients that keep the /api/v1 prefix
 
 components:
   parameters:
@@ -117,26 +120,63 @@ components:
     CreateJobRequest:
       type: object
       required: [prompt]
+      description: |
+        Создание задачи генерации музыки.
+
+        Используются два рабочих режима:
+
+        - `custom_mode=false` — обычная генерация по текстовому описанию. В этом режиме разрешён только `prompt`, остальные поля должны быть пустыми.
+        - `custom_mode=true` — генерация по заданным lyrics/словам и кастомным параметрам. В этом режиме:
+          - `style` обязателен
+          - `title` обязателен
+          - `prompt` содержит сам текст lyrics, если `instrumental=false`
       properties:
         prompt:
           type: string
           minLength: 1
           maxLength: 5000
+          description: |
+            Текст запроса к генерации.
+
+            - при `custom_mode=false`: обычное текстовое описание, максимум 500 символов
+            - при `custom_mode=true` и `instrumental=false`: текст lyrics, максимум 3000 символов для `V4` и 5000 для остальных моделей
+            - при `custom_mode=true` и `instrumental=true`: поле может быть пустым
           example: "Upbeat summer track with synths and acoustic guitar"
         custom_mode:
           type: boolean
           default: false
+          description: |
+            Переключает кастомный режим генерации.
+
+            - `false`: генерация по описанию
+            - `true`: режим lyrics/custom generation, где `style` и `title` обязательны
         style:
           type: string
           maxLength: 1000
+          description: |
+            Жанр/стилистика трека.
+
+            Используется только при `custom_mode=true`.
+            Максимум 200 символов для `V4`, 1000 для остальных моделей.
           example: "Electronic Pop"
         title:
           type: string
-          maxLength: 80
+          maxLength: 100
+          description: |
+            Заголовок трека.
+
+            Используется только при `custom_mode=true`.
+            Максимум 80 символов для `V4` и `V4_5ALL`, 100 для `V4_5`, `V4_5PLUS`, `V5`.
           example: "Summer Vibes"
         instrumental:
           type: boolean
           default: false
+          description: |
+            Если `true`, генерируется инструментал без вокала.
+
+            При `custom_mode=true`:
+            - `instrumental=true`: нужны `style` и `title`
+            - `instrumental=false`: нужны `style`, `title` и lyrics в `prompt`
         model:
           $ref: "#/components/schemas/SunoModel"
         vocal_gender:
@@ -144,6 +184,10 @@ components:
         negative_tags:
           type: string
           maxLength: 200
+          description: |
+            Нежелательные стилистические признаки.
+
+            Допускается только при `custom_mode=true`.
           example: "Heavy Metal, Aggressive"
 
     # ── REST Responses ──
@@ -275,8 +319,11 @@ paths:
 
         **Подключение:**
         ```
-        ws://localhost:8080/api/v1/ws?device_id=<uuid>
+        ws://localhost:8080/ws?device_id=<uuid>
         ```
+
+        Совместимый alias также поддерживается:
+        `ws://localhost:8080/api/v1/ws?device_id=<uuid>`
 
         **Сервер → клиент:**
         ```json
@@ -311,6 +358,9 @@ paths:
           schema:
             type: string
             format: uuid
+          description: |
+            Рекомендуемый способ передать device id для WebSocket.
+            Для обратной совместимости backend также принимает `X-Device-Id` header.
       responses:
         "101":
           description: Switching Protocols (WebSocket upgrade)
@@ -352,6 +402,15 @@ paths:
                   title: "Night City"
                   model: "V5"
                   vocal_gender: "f"
+              lyrics_mode:
+                summary: Lyrics mode through custom_mode=true
+                value:
+                  prompt: "[Verse]\nCity lights are fading slow\n[Chorus]\nWe rise with the morning glow"
+                  custom_mode: true
+                  style: "Indie Pop"
+                  title: "Morning Glow"
+                  model: "V4_5ALL"
+                  instrumental: false
       responses:
         "201":
           description: Задача создана (далее обновления через WS)
@@ -530,10 +589,11 @@ paths:
 
         Логика:
         1. Ответить `200` сразу
-        2. В горутине: обработать complete → скачать mp3 → S3 → tracks → job.status=ready
-        3. **Отправить job через WebSocket** нужному device_id
+        2. Положить payload в Redis callback queue
+        3. Worker обработает `complete` → скачает mp3 → S3 → tracks → job.status=ready
+        4. **Отправить job через WebSocket** нужному device_id
 
-        Валидация: проверить `?token=<SUNO_CALLBACK_SECRET>`
+        Валидация: проверить `?token=<SUNO_CALLBACK_SECRET>` или `X-Suno-Callback-Secret`
         Идемпотентность: пропускать если job уже ready
       operationId: sunoCallback
       tags: [Internal]
@@ -544,6 +604,31 @@ paths:
           schema:
             type: string
           description: "Секрет для валидации"
+      responses:
+        "200":
+          description: Принят
+          content:
+            application/json:
+              example:
+                status: "received"
+        "401":
+          description: Неверный token
+
+  /suno/callback:
+    post:
+      summary: Public alias for Suno callback
+      description: |
+        Публичный alias для того же callback handler'а, что и `/internal/suno/callback`.
+        Используется в окружениях, где внешний callback должен идти в более короткий путь.
+      operationId: sunoCallbackPublicAlias
+      tags: [Internal]
+      parameters:
+        - name: token
+          in: query
+          required: false
+          schema:
+            type: string
+          description: "Секрет для валидации, если не передан через header"
       responses:
         "200":
           description: Принят
@@ -570,3 +655,23 @@ paths:
             application/json:
               example:
                 status: "ok"
+
+  /ready:
+    get:
+      summary: Readiness check
+      operationId: readinessCheck
+      tags: [System]
+      responses:
+        "200":
+          description: Dependencies are reachable
+          content:
+            application/json:
+              example:
+                status: "ready"
+        "503":
+          description: One of the dependencies is unavailable
+          content:
+            application/json:
+              example:
+                status: "unavailable"
+                message: "postgres: dial tcp ..."

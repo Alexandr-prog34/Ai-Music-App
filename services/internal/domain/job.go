@@ -237,7 +237,7 @@ func (j *Job) MarkReady(now time.Time, tracks []Track) error {
 }
 
 func (j *Job) MarkFailed(now time.Time, msg string) error {
-	if j.Status != JobProcessing {
+	if j.Status != JobProcessing && j.Status != JobQueued {
 		// идемпотентность: повторный error callback
 		if j.Status == JobFailed {
 			return nil

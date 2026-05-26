@@ -6,11 +6,16 @@ import (
 	"github.com/google/uuid"
 )
 
-// JobQueue — интерфейс очереди задач.
-type JobQueue interface {
-	// EnqueueJob — добавляет job_id в очередь.
-	EnqueueJob(ctx context.Context, jobID uuid.UUID) error
+type JobMessage struct {
+	ID       uuid.UUID
+	Attempts int
+	Receipt  string
+}
 
-	// DequeueJob — извлекает job_id из очереди для обработки.
-	DequeueJob(ctx context.Context) (uuid.UUID, error)
+type JobQueue interface {
+	EnqueueJob(ctx context.Context, jobID uuid.UUID) error
+	DequeueJob(ctx context.Context) (JobMessage, error)
+	AckJob(ctx context.Context, msg JobMessage) error
+	RetryJob(ctx context.Context, msg JobMessage) error
+	Recover(ctx context.Context) error
 }
