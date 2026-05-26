@@ -85,7 +85,7 @@ func (h *JobsHandler) handleCreateJob(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusCreated)
 
 	// не игнорируем encode: логируем ошибку
-	if err := json.NewEncoder(w).Encode(resp); err != nil {
+	if err := writeJSON(w, resp); err != nil {
 		h.logger.Error(
 			"failed to encode create job response",
 			"err", err,

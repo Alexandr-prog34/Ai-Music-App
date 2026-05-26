@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	_ "github.com/lib/pq"
@@ -145,7 +146,15 @@ func main() {
 
 	addr := ":" + port
 	log.Printf("api listening on %s", addr)
-	if err := http.ListenAndServe(addr, handler); err != nil {
+	server := &http.Server{
+		Addr:              addr,
+		Handler:           handler,
+		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       10 * time.Second,
+		WriteTimeout:      20 * time.Second,
+		IdleTimeout:       60 * time.Second,
+	}
+	if err := server.ListenAndServe(); err != nil {
 		log.Fatal(err)
 	}
 }
@@ -198,4 +207,21 @@ func checkTCP(ctx context.Context, addr string) error {
 	}
 	_ = conn.Close()
 	return nil
+}
+
+func parseAllowedOrigins(raw string) map[string]struct{} {
+	origins := make(map[string]struct{})
+	for _, item := range strings.Split(raw, ",") {
+		origin := strings.TrimSpace(item)
+		if origin == "" {
+			continue
+		}
+		origins[origin] = struct{}{}
+	}
+	return origins
+}
+
+func isOriginAllowed(origin string, allowed map[string]struct{}) bool {
+	_, ok := allowed[origin]
+	return ok
 }

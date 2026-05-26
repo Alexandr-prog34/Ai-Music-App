@@ -3,7 +3,6 @@ package handlers
 import (
 	"context"
 	"crypto/subtle"
-	"encoding/json"
 	"errors"
 	"log/slog"
 	"net/http"
