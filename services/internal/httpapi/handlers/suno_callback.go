@@ -2,7 +2,6 @@ package handlers
 
 import (
 	"crypto/subtle"
-	"encoding/json"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -50,7 +49,7 @@ func (h *SunoCallbackHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) 
 	}
 
 	var req suno.SunoCallbackRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := decodeJSONBody(w, r, maxSunoCallbackBodySize, &req); err != nil {
 		http.Error(w, "invalid json: "+err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -69,7 +68,7 @@ func (h *SunoCallbackHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) 
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	if err := json.NewEncoder(w).Encode(map[string]string{"status": "received"}); err != nil {
+	if err := writeJSON(w, map[string]string{"status": "received"}); err != nil {
 		h.logger.Error("failed to encode callback response", "err", err)
 	}
 }
