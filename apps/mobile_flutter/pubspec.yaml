@@ -1,4 +1,5 @@
 name: mobile_flutter
+
 description: Ai Music Generator mobile app
 publish_to: "none"
 
@@ -17,7 +18,7 @@ dependencies:
 
   go_router: ^14.2.7
 
-  dio: ^5.7.0
+  dio: ^5.9.1
   pretty_dio_logger: ^1.4.0
   google_fonts: ^6.3.2
 
@@ -28,6 +29,8 @@ dependencies:
   json_annotation: ^4.9.0
 
   intl: ^0.19.0
+
+  web_socket_channel: ^3.0.3
 
 dev_dependencies:
   flutter_test:
