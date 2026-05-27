@@ -48,7 +48,17 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
     super.initState();
     _audioPlayer = audioplayers.AudioPlayer();
     _audioPlayer.onPositionChanged.listen(_handleAudioPositionChanged);
-    _audioPlayer.onPlayerComplete.listen((_) => _handlePlaybackComplete());
+    _audioPlayer.onPlayerComplete.listen(
+      (_) => _handlePlaybackComplete(),
+      onError: (Object e, [StackTrace? _]) =>
+          debugPrint('AudioPlayer complete stream error: $e'),
+    );
+    // Sink platform errors so they don't become unhandled stream exceptions.
+    _audioPlayer.eventStream.listen(
+      null,
+      onError: (Object e, [StackTrace? _]) =>
+          debugPrint('AudioPlayer platform error: $e'),
+    );
   }
 
   @override
@@ -96,14 +106,18 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
       }
     }
 
-    if (state.isPlaying) {
-      if (_audioPlayer.state != audioplayers.PlayerState.playing) {
-        await _audioPlayer.resume();
+    try {
+      if (state.isPlaying) {
+        if (_audioPlayer.state != audioplayers.PlayerState.playing) {
+          await _audioPlayer.resume();
+        }
+      } else {
+        if (_audioPlayer.state == audioplayers.PlayerState.playing) {
+          await _audioPlayer.pause();
+        }
       }
-    } else {
-      if (_audioPlayer.state == audioplayers.PlayerState.playing) {
-        await _audioPlayer.pause();
-      }
+    } catch (e) {
+      debugPrint('Failed to control playback: $e');
     }
   }
 
@@ -453,19 +467,27 @@ class _PlayerBody extends StatelessWidget {
         const SizedBox(height: 2),
         Row(
           children: [
-            Text(
-              state.song.mood ?? 'Song Mood',
-              style: AppTypography.body.copyWith(
-                fontSize: 10,
-                color: AppColors.white60,
+            Flexible(
+              child: Text(
+                state.song.mood ?? 'Song Mood',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: AppTypography.body.copyWith(
+                  fontSize: 10,
+                  color: AppColors.white60,
+                ),
               ),
             ),
             const SizedBox(width: 16),
-            Text(
-              state.song.genre ?? 'Song Genre',
-              style: AppTypography.body.copyWith(
-                fontSize: 10,
-                color: AppColors.white60,
+            Flexible(
+              child: Text(
+                state.song.genre ?? 'Song Genre',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: AppTypography.body.copyWith(
+                  fontSize: 10,
+                  color: AppColors.white60,
+                ),
               ),
             ),
           ],
