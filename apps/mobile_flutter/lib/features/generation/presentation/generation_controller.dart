@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -235,8 +236,14 @@ class GenerationFormController
       /// API
       final jobsApi = JobsApi(dio);
 
+      final host = (Uri.parse('http://localhost').host);
+      final wsHost = {
+        true: '10.0.2.2',
+        false: host,
+      }[Platform.isAndroid] ?? host;
+
       final wsApi = WebSocketApi(
-        'ws://localhost:8080/ws?device_id=$deviceId',
+        'ws://$wsHost:8080/ws?device_id=$deviceId',
       );
 
       /// REPOSITORY

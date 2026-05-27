@@ -65,6 +65,8 @@ class BackendSongRepository implements SongRepository {
       title: track.title,
       genre: track.tags,
       coverPath: track.imageUrl,
+      streamUrl: track.streamUrl,
+      audioUrl: track.audioUrl,
       duration: Duration(milliseconds: (track.durationSec * 1000).round()),
       createdAt: track.createdAt,
     );

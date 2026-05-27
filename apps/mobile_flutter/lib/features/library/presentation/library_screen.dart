@@ -10,6 +10,7 @@ import '../../../shared/theme/app_colors.dart';
 import '../../../shared/theme/app_typography.dart';
 import '../../../shared/widgets/app_background.dart';
 import '../../../shared/widgets/app_icon.dart';
+import '../../../shared/widgets/cached_image_widget.dart';
 import '../../../shared/widgets/glass_card.dart';
 import '../../player/presentation/player_screen.dart';
 import '../data/playlist_repository_impl.dart';
@@ -179,6 +180,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                                 if (i > 0) const SizedBox(height: 12),
                                 _SongTile(
                                   title: songs[i].title,
+                                  coverPath: songs[i].coverPath,
                                   onTap: () => _openPlayer(songs[i].id, songs[i].title),
                                 ),
                               ],
@@ -364,14 +366,22 @@ class _PlaylistCard extends StatelessWidget {
 }
 
 // ─── Song tile ───────────────────────────────────────────────────────────────
-
 class _SongTile extends StatelessWidget {
   final String title;
+  final String? coverPath;
   final VoidCallback onTap;
-  const _SongTile({required this.title, required this.onTap});
+
+  const _SongTile({
+    required this.title,
+    required this.coverPath,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
+    final hasCover =
+        coverPath != null && coverPath!.trim().isNotEmpty;
+
     return GestureDetector(
       onTap: onTap,
       child: Container(
@@ -387,7 +397,10 @@ class _SongTile extends StatelessWidget {
               Color(0x664D285E),
             ],
           ),
-          border: Border.all(color: const Color(0x2EFFFFFF), width: 0.6),
+          border: Border.all(
+            color: const Color(0x2EFFFFFF),
+            width: 0.6,
+          ),
           boxShadow: const [
             BoxShadow(
               offset: Offset(0, 10),
@@ -396,33 +409,53 @@ class _SongTile extends StatelessWidget {
             ),
           ],
         ),
-        child: Row(children: [
-          const SizedBox(width: 10),
-          Container(
-            width: 56,
-            height: 56,
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(18),
-              gradient: const LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [
-                  Color(0xFFAE8AD5),
-                  Color(0xFF6B2F96),
-                ],
+        child: Row(
+          children: [
+            const SizedBox(width: 10),
+
+            // COVER
+            Container(
+              width: 56,
+              height: 56,
+              clipBehavior: Clip.antiAlias,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(18),
+                gradient: const LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    Color(0xFFAE8AD5),
+                    Color(0xFF6B2F96),
+                  ],
+                ),
+                border: Border.all(
+                  color: const Color(0x36FFFFFF),
+                  width: 0.6,
+                ),
               ),
-              border: Border.all(color: const Color(0x36FFFFFF), width: 0.6),
+              child: hasCover
+                  ? CachedImageWidget(
+                      imageUrl: coverPath!,
+                      fit: BoxFit.cover,
+                    )
+                  : null,
             ),
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Text(
-              title,
-              style: AppTypography.body.copyWith(color: Colors.white, fontSize: 16),
+
+            const SizedBox(width: 14),
+
+            Expanded(
+              child: Text(
+                title,
+                style: AppTypography.body.copyWith(
+                  color: Colors.white,
+                  fontSize: 16,
+                ),
+              ),
             ),
-          ),
-          const SizedBox(width: 14),
-        ]),
+
+            const SizedBox(width: 14),
+          ],
+        ),
       ),
     );
   }
@@ -473,9 +506,7 @@ class _NewPlaylistDialogState extends State<_NewPlaylistDialog> {
       return;
     }
 
-    final source = action == 'Take Picture'
-        ? ImageSource.camera
-        : ImageSource.gallery;
+    final source = ImageSource.gallery;
     final path = await widget.onPickCover(source);
     if (path == null || !mounted) return;
 
@@ -1017,15 +1048,23 @@ class _PlaylistCoverBox extends StatelessWidget {
           ),
         ],
       ),
-      child: hasCover
-          ? Image.file(
-              File(path),
-              fit: BoxFit.cover,
-              errorBuilder: (_, __, ___) => const SizedBox.shrink(),
-            )
-          : null,
+      child: hasCover ? _buildLibraryCover(path) : null,
     );
   }
+}
+
+Widget? _buildLibraryCover(String path) {
+  if (!path.startsWith('http')) {
+    return Image.file(
+      File(path),
+      fit: BoxFit.cover,
+    );
+  }
+
+  return CachedImageWidget(
+    imageUrl: path,
+    fit: BoxFit.cover,
+  );
 }
 
 class _EditPlaylistPictureDialog extends StatelessWidget {

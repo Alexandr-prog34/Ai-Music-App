@@ -21,6 +21,7 @@ dependencies:
   dio: ^5.9.1
   pretty_dio_logger: ^1.4.0
   google_fonts: ^6.3.2
+  audioplayers: ^6.6.0
 
   flutter_secure_storage: ^9.2.2
   uuid: ^4.5.1
@@ -32,6 +33,8 @@ dependencies:
 
   web_socket_channel: ^3.0.3
   image_picker: ^1.1.2
+  path_provider: ^2.1.5
+  crypto: ^3.0.6
 
 dev_dependencies:
   flutter_test:
