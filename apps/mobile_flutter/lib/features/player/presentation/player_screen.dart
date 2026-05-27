@@ -1,17 +1,32 @@
+import 'dart:io';
+
+import 'package:audioplayers/audioplayers.dart' as audioplayers;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/cache/local_media_cache_provider.dart';
 import '../../../core/models/playlist.dart';
 import '../../../core/models/song.dart';
 import '../../../shared/theme/app_colors.dart';
 import '../../../shared/theme/app_typography.dart';
 import '../../../shared/widgets/app_background.dart';
+import '../../../shared/widgets/cached_image_widget.dart';
 import '../../../shared/widgets/glass_card.dart';
 import 'download_url_helper.dart';
 import '../../library/data/playlist_repository_impl.dart';
 import '../../library/data/song_repository_impl.dart';
 import '../../library/domain/library_controller.dart';
 import '../domain/player_controller.dart';
+
+Widget? _buildCoverImage(String? rawPath) {
+  final coverPath = rawPath?.trim();
+  if (coverPath == null || coverPath.isEmpty) return null;
+
+  return CachedImageWidget(
+    imageUrl: coverPath,
+    fit: BoxFit.cover,
+  );
+}
 
 class PlayerScreen extends ConsumerStatefulWidget {
   final String songId;
@@ -24,6 +39,125 @@ class PlayerScreen extends ConsumerStatefulWidget {
 }
 
 class _PlayerScreenState extends ConsumerState<PlayerScreen> {
+  late final audioplayers.AudioPlayer _audioPlayer;
+  String? _currentSourceUrl;
+  bool _isSeeking = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _audioPlayer = audioplayers.AudioPlayer();
+    _audioPlayer.onPositionChanged.listen(_handleAudioPositionChanged);
+    _audioPlayer.onPlayerComplete.listen((_) => _handlePlaybackComplete());
+  }
+
+  @override
+  void dispose() {
+    _audioPlayer.dispose();
+    super.dispose();
+  }
+
+  Future<void> _syncAudioState(PlayerState state, WidgetRef ref) async {
+    final rawUrl = state.song.streamUrl ?? state.song.audioUrl;
+    if (rawUrl == null || rawUrl.isEmpty) return;
+
+    String? sourceUrl;
+
+    // On Linux: download and cache audio locally for better compatibility
+    if (Platform.isLinux) {
+      try {
+        final cachedPath = await ref.read(cachedAudioProvider(rawUrl).future);
+        if (cachedPath != null) {
+          sourceUrl = cachedPath;
+        }
+      } catch (e) {
+        debugPrint('Failed to get cached audio: $e');
+        // Fallback to normalized URL
+        sourceUrl = _normalizeMediaUrl(rawUrl);
+      }
+    } else {
+      // For other platforms, normalize the URL
+      sourceUrl = _normalizeMediaUrl(rawUrl);
+    }
+
+    if (sourceUrl == null) return;
+
+    if (sourceUrl != _currentSourceUrl) {
+      _currentSourceUrl = sourceUrl;
+      try {
+        // Use DeviceFileSource for local file paths, UrlSource for URLs
+        final source = sourceUrl.startsWith('/') || sourceUrl.startsWith('file://')
+            ? audioplayers.DeviceFileSource(sourceUrl)
+            : audioplayers.UrlSource(sourceUrl);
+        await _audioPlayer.setSource(source);
+      } catch (e) {
+        debugPrint('Failed to set audio source: $e');
+        return;
+      }
+    }
+
+    if (state.isPlaying) {
+      if (_audioPlayer.state != audioplayers.PlayerState.playing) {
+        await _audioPlayer.resume();
+      }
+    } else {
+      if (_audioPlayer.state == audioplayers.PlayerState.playing) {
+        await _audioPlayer.pause();
+      }
+    }
+  }
+
+  Future<void> _handleAudioPositionChanged(Duration position) async {
+    final current = ref.read(playerControllerProvider(widget.songId));
+    final songState = current.valueOrNull;
+    if (songState == null || _isSeeking) return;
+
+    final totalMs = songState.song.duration.inMilliseconds;
+    if (totalMs <= 0) return;
+
+    final progress = (position.inMilliseconds / totalMs).clamp(0, 1) as double;
+    ref.read(playerControllerProvider(widget.songId).notifier).updateProgress(progress);
+  }
+
+  Future<void> _handlePlaybackComplete() async {
+    final current = ref.read(playerControllerProvider(widget.songId));
+    final songState = current.valueOrNull;
+    if (songState == null) return;
+
+    ref.read(playerControllerProvider(widget.songId).notifier).setPlaying(false);
+    ref.read(playerControllerProvider(widget.songId).notifier).updateProgress(1);
+  }
+
+  Future<void> _seekAudio(double value, Duration duration) async {
+    if (duration.inMilliseconds <= 0) return;
+
+    _isSeeking = true;
+    await _audioPlayer.seek(Duration(milliseconds: (duration.inMilliseconds * value).round()));
+    _isSeeking = false;
+  }
+
+  String? _normalizeMediaUrl(String? rawUrl) {
+    if (rawUrl == null || rawUrl.trim().isEmpty) return null;
+
+    var normalized = rawUrl.trim();
+    if (!normalized.contains('://')) {
+      if (normalized.startsWith('//')) {
+        normalized = 'http:$normalized';
+      } else {
+        normalized = 'http://$normalized';
+      }
+    }
+
+    final uri = Uri.tryParse(normalized);
+    if (uri == null) return normalized;
+    if (uri.host == 'localhost') {
+      if (Platform.isLinux) return uri.replace(host: '127.0.0.1').toString();
+      if (Platform.isAndroid) return uri.replace(host: '10.0.2.2').toString();
+    }
+
+    return uri.toString();
+  }
+
   Future<void> _openSongOptions(PlayerState state, PlayerController ctrl) async {
     await showDialog<void>(
       context: context,
@@ -57,7 +191,6 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
     }
 
     await ctrl.renameSong(nextTitle.trim());
-    ref.invalidate(songsProvider);
   }
 
   Future<void> _openDeleteDialog(Song song) async {
@@ -125,9 +258,43 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
     if (action == null || !mounted) return;
 
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('$action is not connected yet'),
+      const SnackBar(
+        content: Text('Song cover editing is coming soon'),
         behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
+  Future<void> _openAdjacentSong(Song currentSong, int delta) async {
+    final songs = await ref.read(songRepositoryProvider).getAll();
+    if (!mounted || songs.length < 2) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('No other songs in queue'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+
+    final currentIndex = songs.indexWhere((song) => song.id == currentSong.id);
+    if (currentIndex == -1) return;
+
+    final nextIndex = (currentIndex + delta + songs.length) % songs.length;
+    final nextSong = songs[nextIndex];
+
+    Navigator.of(context, rootNavigator: true).pushReplacement(
+      PageRouteBuilder(
+        pageBuilder: (_, __, ___) => PlayerScreen(
+          songId: nextSong.id,
+          title: nextSong.title,
+        ),
+        transitionDuration: const Duration(milliseconds: 220),
+        reverseTransitionDuration: const Duration(milliseconds: 180),
+        transitionsBuilder: (_, animation, __, child) {
+          return FadeTransition(opacity: animation, child: child);
+        },
       ),
     );
   }
@@ -167,6 +334,10 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
 
   @override
   Widget build(BuildContext context) {
+    ref.listen<AsyncValue<PlayerState>>(
+      playerControllerProvider(widget.songId),
+      (previous, next) => next.whenData((state) => _syncAudioState(state, ref)),
+    );
     final asyncState = ref.watch(playerControllerProvider(widget.songId));
     final ctrl = ref.read(playerControllerProvider(widget.songId).notifier);
 
@@ -211,6 +382,9 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen> {
                   onMore: () => _openSongOptions(state, ctrl),
                   onEditPicture: _openEditPictureDialog,
                   onDownload: () => _downloadTrack(ctrl, state.song),
+                  onPrevious: () => _openAdjacentSong(state.song, -1),
+                  onNext: () => _openAdjacentSong(state.song, 1),
+                  onSeek: (value) => _seekAudio(value, state.song.duration),
                 ),
               ),
             ),
@@ -228,6 +402,9 @@ class _PlayerBody extends StatelessWidget {
   final VoidCallback onMore;
   final VoidCallback onEditPicture;
   final VoidCallback onDownload;
+  final VoidCallback onPrevious;
+  final VoidCallback onNext;
+  final ValueChanged<double> onSeek;
 
   const _PlayerBody({
     required this.state,
@@ -236,6 +413,9 @@ class _PlayerBody extends StatelessWidget {
     required this.onMore,
     required this.onEditPicture,
     required this.onDownload,
+    required this.onPrevious,
+    required this.onNext,
+    required this.onSeek,
   });
 
   @override
@@ -246,7 +426,7 @@ class _PlayerBody extends StatelessWidget {
         const SizedBox(height: 10),
         _TopBar(onBack: onBack, onMore: onMore),
         const SizedBox(height: 14),
-        _CoverPlaceholder(onEdit: onEditPicture),
+        _CoverPlaceholder(coverPath: state.song.coverPath, onEdit: onEditPicture),
         const SizedBox(height: 14),
         Row(
           crossAxisAlignment: CrossAxisAlignment.end,
@@ -291,16 +471,19 @@ class _PlayerBody extends StatelessWidget {
           ],
         ),
         const SizedBox(height: 10),
-        _ProgressSlider(value: state.progress, onChanged: ctrl.seek),
+        _ProgressSlider(value: state.progress, onChanged: (value) {
+          ctrl.seek(value);
+          onSeek(value);
+        }),
         const SizedBox(height: 14),
         Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            _ControlIcon(icon: Icons.skip_previous_rounded, onTap: () {}),
+            _ControlIcon(icon: Icons.skip_previous_rounded, onTap: onPrevious),
             const SizedBox(width: 22),
             _PlayButton(isPlaying: state.isPlaying, onTap: ctrl.togglePlay),
             const SizedBox(width: 22),
-            _ControlIcon(icon: Icons.skip_next_rounded, onTap: () {}),
+            _ControlIcon(icon: Icons.skip_next_rounded, onTap: onNext),
           ],
         ),
         const SizedBox(height: 12),
@@ -345,16 +528,20 @@ class _TopBar extends StatelessWidget {
 
 class _CoverPlaceholder extends StatelessWidget {
   final VoidCallback onEdit;
+  final String? coverPath;
 
-  const _CoverPlaceholder({required this.onEdit});
+  const _CoverPlaceholder({required this.onEdit, this.coverPath});
 
   @override
   Widget build(BuildContext context) {
     return Stack(
       children: [
-        const GlassCard(
-          radius: 22,
-          child: SizedBox(height: 200, width: double.infinity),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(22),
+          child: _buildCoverImage(coverPath) ?? const GlassCard(
+            radius: 22,
+            child: SizedBox(height: 200, width: double.infinity),
+          ),
         ),
         Positioned(
           right: 12,
@@ -987,22 +1174,7 @@ class _PlaylistChoiceTile extends StatelessWidget {
       onTap: onTap,
       child: Row(
         children: [
-          Container(
-            width: 44,
-            height: 44,
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(14),
-              gradient: const LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [
-                  Color(0xFF5E5864),
-                  Color(0xFF2F2936),
-                ],
-              ),
-              border: Border.all(color: AppColors.white12, width: 0.6),
-            ),
-          ),
+          _SmallPlaylistCover(coverPath: playlist.coverPath),
           const SizedBox(width: 14),
           Expanded(
             child: Text(
@@ -1017,6 +1189,37 @@ class _PlaylistChoiceTile extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _SmallPlaylistCover extends StatelessWidget {
+  final String? coverPath;
+
+  const _SmallPlaylistCover({this.coverPath});
+
+  @override
+  Widget build(BuildContext context) {
+    final path = coverPath?.trim();
+    final hasCover = path != null && path.isNotEmpty;
+
+    return Container(
+      width: 44,
+      height: 44,
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(14),
+        gradient: const LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [
+            Color(0xFF5E5864),
+            Color(0xFF2F2936),
+          ],
+        ),
+        border: Border.all(color: AppColors.white12, width: 0.6),
+      ),
+      child: hasCover ? _buildCoverImage(path) : null,
     );
   }
 }

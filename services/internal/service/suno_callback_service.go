@@ -60,26 +60,39 @@ func (s *SunoCallbackService) Handle(ctx context.Context, req sunocallback.Reque
 			"message", req.Message,
 		)
 		return nil
+
 	case sunocallback.TypeComplete:
 		return s.handleComplete(ctx, job, req)
+
 	case sunocallback.TypeError:
 		return s.handleError(ctx, job, req.ErrorMessage())
+
 	default:
-		return sunocallback.Invalid(sunocallback.ErrCallbackTypeInvalid, "got=%q", string(req.CallbackType()))
+		return sunocallback.Invalid(
+			sunocallback.ErrCallbackTypeInvalid,
+			"got=%q",
+			string(req.CallbackType()),
+		)
 	}
 }
 
-func (s *SunoCallbackService) handleComplete(ctx context.Context, job domain.Job, req sunocallback.Request) error {
+func (s *SunoCallbackService) handleComplete(
+	ctx context.Context,
+	job domain.Job,
+	req sunocallback.Request,
+) error {
 	if job.Status == domain.JobReady {
 		s.logger.Info(
 			"suno callback complete ignored because job is already ready",
 			"job_id", job.ID.String(),
 			"task_id", req.TaskID(),
 		)
+
 		return nil
 	}
 
 	tracks := make([]domain.Track, 0, len(req.Results()))
+
 	for _, result := range req.Results() {
 		track, err := s.buildTrack(ctx, job, result)
 		if err != nil {
@@ -90,12 +103,14 @@ func (s *SunoCallbackService) handleComplete(ctx context.Context, job domain.Job
 		if err != nil {
 			return fmt.Errorf("create track: %w", err)
 		}
+
 		tracks = append(tracks, created)
 	}
 
 	if err := job.MarkReady(time.Now().UTC(), tracks); err != nil {
 		return err
 	}
+
 	updatedJob, err := s.jobRepo.UpdateJob(ctx, job)
 	if err != nil {
 		return fmt.Errorf("update job ready: %w", err)
@@ -115,21 +130,20 @@ func (s *SunoCallbackService) handleComplete(ctx context.Context, job domain.Job
 	return nil
 }
 
-func (s *SunoCallbackService) handleError(ctx context.Context, job domain.Job, message string) error {
-	updatedJob := job
+func (s *SunoCallbackService) handleError(
+	ctx context.Context,
+	job domain.Job,
+	message string,
+) error {
 	if job.Status != domain.JobFailed {
 		if err := job.MarkFailed(time.Now().UTC(), message); err != nil {
 			return err
 		}
-		updated, err := s.jobRepo.UpdateJob(ctx, job)
+
+		_, err := s.jobRepo.UpdateJob(ctx, job)
 		if err != nil {
 			return fmt.Errorf("update job failed: %w", err)
 		}
-		updatedJob = updated
-	}
-
-	if err := s.publishJobUpdated(ctx, updatedJob); err != nil {
-		return err
 	}
 
 	s.logger.Info(
@@ -142,41 +156,94 @@ func (s *SunoCallbackService) handleError(ctx context.Context, job domain.Job, m
 	return nil
 }
 
-func (s *SunoCallbackService) buildTrack(ctx context.Context, job domain.Job, result sunocallback.Result) (domain.Track, error) {
+func (s *SunoCallbackService) buildTrack(
+	ctx context.Context,
+	job domain.Job,
+	result sunocallback.Result,
+) (domain.Track, error) {
 	audioID := strings.TrimSpace(result.AudioID)
 	if audioID == "" {
-		return domain.Track{}, domain.InvalidInput(domain.ErrTrackSunoAudioIDReq)
+		return domain.Track{}, domain.InvalidInput(
+			domain.ErrTrackSunoAudioIDReq,
+		)
 	}
 
-	audioSourceURL := firstNonEmpty(result.AudioURL, result.SourceAudioURL)
+	audioSourceURL := firstNonEmpty(
+		result.AudioURL,
+		result.SourceAudioURL,
+	)
+
 	if audioSourceURL == "" {
-		return domain.Track{}, domain.InvalidInput(domain.ErrTrackAudioURLRequired)
+		return domain.Track{}, domain.InvalidInput(
+			domain.ErrTrackAudioURLRequired,
+		)
 	}
 
 	if result.DurationSec == nil || *result.DurationSec <= 0 {
-		return domain.Track{}, domain.InvalidInput(domain.ErrInvalidInput, "track.duration is required")
+		return domain.Track{}, domain.InvalidInput(
+			domain.ErrInvalidInput,
+			"track.duration is required",
+		)
 	}
 
-	audioKey := fmt.Sprintf("jobs/%s/audio/%s.mp3", job.ID.String(), audioID)
-	audioBucket, err := s.storage.UploadFromURL(ctx, audioSourceURL, audioKey)
+	audioKey := fmt.Sprintf(
+		"jobs/%s/audio/%s.mp3",
+		job.ID.String(),
+		audioID,
+	)
+
+	audioBucket, err := s.storage.UploadFromURL(
+		ctx,
+		audioSourceURL,
+		audioKey,
+	)
+
 	if err != nil {
-		return domain.Track{}, fmt.Errorf("upload audio to storage: %w", err)
+		return domain.Track{}, fmt.Errorf(
+			"upload audio to storage: %w",
+			err,
+		)
 	}
 
 	var imageBucket *string
 	var imageKey *string
-	imageSourceURL := firstNonEmpty(result.ImageURL, result.SourceImageURL)
+
+	imageSourceURL := firstNonEmpty(
+		result.ImageURL,
+		result.SourceImageURL,
+	)
+
 	if imageSourceURL != "" {
-		key := fmt.Sprintf("jobs/%s/images/%s%s", job.ID.String(), audioID, extensionFromURL(imageSourceURL, ".jpg"))
-		bucket, uploadErr := s.storage.UploadFromURL(ctx, imageSourceURL, key)
+		key := fmt.Sprintf(
+			"jobs/%s/images/%s%s",
+			job.ID.String(),
+			audioID,
+			extensionFromURL(imageSourceURL, ".jpg"),
+		)
+
+		bucket, uploadErr := s.storage.UploadFromURL(
+			ctx,
+			imageSourceURL,
+			key,
+		)
+
 		if uploadErr != nil {
-			return domain.Track{}, fmt.Errorf("upload image to storage: %w", uploadErr)
+			s.logger.Warn(
+				"cover upload failed",
+				"job_id", job.ID.String(),
+				"audio_id", audioID,
+				"err", uploadErr,
+			)
+		} else {
+			imageBucket = &bucket
+			imageKey = &key
 		}
-		imageBucket = &bucket
-		imageKey = &key
 	}
 
-	title := strings.TrimSpace(firstNonEmpty(result.Title, job.Params.Title))
+	title := strings.TrimSpace(
+		firstNonEmpty(result.Title, job.Params.Title),
+	)
+
 	if title == "" {
 		title = audioID
 	}
@@ -201,13 +268,22 @@ func (s *SunoCallbackService) buildTrack(ctx context.Context, job domain.Job, re
 	return track, nil
 }
 
-func (s *SunoCallbackService) publishJobUpdated(ctx context.Context, job domain.Job) error {
+func (s *SunoCallbackService) publishJobUpdated(
+	ctx context.Context,
+	job domain.Job,
+) error {
 	if s.notifier == nil {
 		return nil
 	}
-	if err := s.notifier.JobUpdated(ctx, job.UserID, job.ID); err != nil {
+
+	if err := s.notifier.JobUpdated(
+		ctx,
+		job.UserID,
+		job.ID,
+	); err != nil {
 		return fmt.Errorf("publish job updated: %w", err)
 	}
+
 	return nil
 }
 
@@ -216,11 +292,14 @@ func firstNonEmpty(values ...*string) string {
 		if value == nil {
 			continue
 		}
+
 		trimmed := strings.TrimSpace(*value)
+
 		if trimmed != "" {
 			return trimmed
 		}
 	}
+
 	return ""
 }
 
@@ -228,10 +307,13 @@ func normalizeOptionalPtr(value *string) *string {
 	if value == nil {
 		return nil
 	}
+
 	trimmed := strings.TrimSpace(*value)
+
 	if trimmed == "" {
 		return nil
 	}
+
 	return &trimmed
 }
 
@@ -240,10 +322,13 @@ func extensionFromURL(raw string, fallback string) string {
 	if err != nil {
 		return fallback
 	}
+
 	ext := strings.ToLower(path.Ext(parsed.Path))
+
 	if ext == "" {
 		return fallback
 	}
+
 	return ext
 }
 
@@ -251,5 +336,6 @@ func taskIDValue(taskID *string) string {
 	if taskID == nil {
 		return ""
 	}
+
 	return *taskID
 }

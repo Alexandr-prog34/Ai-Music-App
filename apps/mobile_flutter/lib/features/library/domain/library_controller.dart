@@ -60,6 +60,13 @@ class PlaylistsController extends AsyncNotifier<List<Playlist>> {
     });
   }
 
+  Future<void> updatePlaylist(Playlist playlist) async {
+    state = await AsyncValue.guard(() async {
+      await ref.read(playlistRepositoryProvider).update(playlist);
+      return _fetch();
+    });
+  }
+
   Future<void> delete(String id) async {
     state = await AsyncValue.guard(() async {
       await ref.read(playlistRepositoryProvider).delete(id);

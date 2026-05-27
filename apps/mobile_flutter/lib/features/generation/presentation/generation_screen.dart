@@ -7,6 +7,7 @@ import '../../../shared/theme/app_typography.dart';
 import '../../../shared/widgets/app_background.dart';
 import '../../../shared/widgets/app_icon.dart';
 import '../../../shared/widgets/glass_card.dart';
+import '../../player/presentation/player_screen.dart';
 import '../domain/generation_catalog.dart';
 import 'generation_controller.dart';
 
@@ -18,26 +19,60 @@ class GenerationScreen extends ConsumerWidget {
     final st = ref.watch(generationFormProvider);
     final ctrl = ref.read(generationFormProvider.notifier);
 
-    // Listen for state changes: errors and submission completion
-    ref.listen<GenerationFormState>(generationFormProvider, (prev, next) {
-      // Handle error messages
-      if (next.errorMessage != null && next.errorMessage != prev?.errorMessage) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(next.errorMessage!),
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
-        ctrl.clearError();
-      }
+    ref.listen<GenerationFormState>(
+      generationFormProvider,
+      (prev, next) {
+        if (next.errorMessage != null &&
+            next.errorMessage != prev?.errorMessage) {
+          final navigator = Navigator.of(context, rootNavigator: true);
+          if (context.mounted && navigator.canPop()) {
+            navigator.pop();
+          }
 
-      // Handle submission completion to close dialog
-      if (prev != null && prev.isSubmitting && !next.isSubmitting) {
-        if (context.mounted && Navigator.of(context).canPop()) {
-          Navigator.of(context).pop();
+          if (!context.mounted) {
+            return;
+          }
+
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(next.errorMessage!),
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+
+          ctrl.clearError();
         }
-      }
-    });
+
+        final completedTrackId = next.completedTrackId;
+        if (completedTrackId != null &&
+            completedTrackId != prev?.completedTrackId) {
+          final navigator = Navigator.of(context, rootNavigator: true);
+          if (context.mounted && navigator.canPop()) {
+            navigator.pop();
+          }
+
+          ctrl.clearCompletedTrack();
+
+          if (!context.mounted) {
+            return;
+          }
+
+          Navigator.of(context, rootNavigator: true).push(
+            PageRouteBuilder(
+              pageBuilder: (_, __, ___) => PlayerScreen(
+                songId: completedTrackId,
+                title: 'Generated track',
+              ),
+              transitionDuration: const Duration(milliseconds: 300),
+              reverseTransitionDuration: const Duration(milliseconds: 200),
+              transitionsBuilder: (_, animation, __, child) {
+                return FadeTransition(opacity: animation, child: child);
+              },
+            ),
+          );
+        }
+      },
+    );
 
     return Scaffold(
       backgroundColor: Colors.transparent,
@@ -92,22 +127,41 @@ class GenerationScreen extends ConsumerWidget {
                               ? 'Create with Description'
                               : 'Create with Lyrics',
                           isLoading: st.isSubmitting,
+                          // onPressed: () async {
+                          //   if (!context.mounted) return;
+                          //   showDialog(
+                          //     context: context,
+                          //     barrierDismissible: false,
+                          //     builder: (_) => const _GeneratingDialog(),
+                          //   );
+                          //   await ctrl.submit();
+                          //   if (context.mounted) {
+                          //     ScaffoldMessenger.of(context).showSnackBar(
+                          //       const SnackBar(
+                          //         content: Text('Track created successfully!'),
+                          //         behavior: SnackBarBehavior.floating,
+                          //       ),
+                          //     );
+                          //   }
+                          // },
+
                           onPressed: () async {
-                            if (!context.mounted) return;
-                            showDialog(
-                              context: context,
-                              barrierDismissible: false,
-                              builder: (_) => const _GeneratingDialog(),
-                            );
-                            await ctrl.submit();
-                            if (context.mounted) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
-                                  content: Text('Track created successfully!'),
-                                  behavior: SnackBarBehavior.floating,
-                                ),
-                              );
+
+                            if (!context.mounted) {
+                              return;
                             }
+
+                            showDialog(
+
+                              context: context,
+
+                              barrierDismissible: false,
+
+                              builder: (_) =>
+                                  const _GeneratingDialog(),
+                            );
+
+                            await ctrl.submit();
                           },
                         ),
                       ),

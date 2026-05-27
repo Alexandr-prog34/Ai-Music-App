@@ -71,6 +71,38 @@ class TracksApi {
     await dio.delete("/tracks/$id/favorite");
   }
 
+  //PATCH /tracks/{id}
+  Future<Track> renameTrack(String id, String title) async {
+    final response = await dio.patch(
+      "/tracks/$id",
+      data: {"title": title},
+    );
+
+    final data = response.data;
+    if (data == null) {
+      throw const FormatException("Empty track response");
+    }
+
+    return Track.fromJson(data as Map<String, dynamic>);
+  }
+
+  //PUT /tracks/{id}/cover
+  Future<Track> uploadCover(String id, String filePath) async {
+    final response = await dio.put(
+      "/tracks/$id/cover",
+      data: FormData.fromMap({
+        "cover": await MultipartFile.fromFile(filePath),
+      }),
+    );
+
+    final data = response.data;
+    if (data == null) {
+      throw const FormatException("Empty track response");
+    }
+
+    return Track.fromJson(data as Map<String, dynamic>);
+  }
+
   //GET /tracks/{id}/download
   //backend returns redirect (302)
   Future<String> getDownloadUrl(String id) async {

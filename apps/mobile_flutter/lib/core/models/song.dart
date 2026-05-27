@@ -6,6 +6,8 @@ class Song {
   final String? genre;
   final String? lyrics;
   final String? coverPath;
+  final String? streamUrl;
+  final String? audioUrl;
   final Duration duration;
   final DateTime createdAt;
 
@@ -16,6 +18,8 @@ class Song {
     this.genre,
     this.lyrics,
     this.coverPath,
+    this.streamUrl,
+    this.audioUrl,
     this.duration = Duration.zero,
     required this.createdAt,
   });
@@ -26,6 +30,8 @@ class Song {
     String? genre,
     String? lyrics,
     String? coverPath,
+    String? streamUrl,
+    String? audioUrl,
     Duration? duration,
   }) {
     return Song(
@@ -35,6 +41,8 @@ class Song {
       genre: genre ?? this.genre,
       lyrics: lyrics ?? this.lyrics,
       coverPath: coverPath ?? this.coverPath,
+      streamUrl: streamUrl ?? this.streamUrl,
+      audioUrl: audioUrl ?? this.audioUrl,
       duration: duration ?? this.duration,
       createdAt: createdAt,
     );

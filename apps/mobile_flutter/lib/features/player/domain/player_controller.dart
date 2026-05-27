@@ -68,6 +68,18 @@ class PlayerController extends FamilyAsyncNotifier<PlayerState, String> {
     state = AsyncData(current.copyWith(progress: value.clamp(0, 1)));
   }
 
+  void setPlaying(bool isPlaying) {
+    final current = state.valueOrNull;
+    if (current == null) return;
+    state = AsyncData(current.copyWith(isPlaying: isPlaying));
+  }
+
+  void updateProgress(double progress) {
+    final current = state.valueOrNull;
+    if (current == null) return;
+    state = AsyncData(current.copyWith(progress: progress.clamp(0, 1)));
+  }
+
   Future<void> toggleLike() async {
     final current = state.valueOrNull;
     if (current == null) return;
@@ -84,12 +96,8 @@ class PlayerController extends FamilyAsyncNotifier<PlayerState, String> {
     final current = state.valueOrNull;
     if (current == null) return;
 
-    state = await AsyncValue.guard(() async {
-      final repo = ref.read(songRepositoryProvider);
-      final updated = current.song.copyWith(title: nextTitle);
-      await repo.save(updated);
-      return current.copyWith(song: updated);
-    });
+    final updated = current.song.copyWith(title: nextTitle);
+    state = AsyncData(current.copyWith(song: updated));
   }
 
   Future<String> getDownloadUrl() async {

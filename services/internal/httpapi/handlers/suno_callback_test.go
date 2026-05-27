@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"encoding/json"
 
 	"github.com/AI-Music-App001/Ai-Music-Generator/services/internal/sunocallback"
 )

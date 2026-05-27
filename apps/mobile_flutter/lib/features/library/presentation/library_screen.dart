@@ -1,13 +1,19 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:image_picker/image_picker.dart';
 
+import '../../../core/models/playlist.dart';
 import '../../../shared/assets/app_assets.dart';
 import '../../../shared/theme/app_colors.dart';
 import '../../../shared/theme/app_typography.dart';
 import '../../../shared/widgets/app_background.dart';
 import '../../../shared/widgets/app_icon.dart';
+import '../../../shared/widgets/cached_image_widget.dart';
 import '../../../shared/widgets/glass_card.dart';
 import '../../player/presentation/player_screen.dart';
+import '../data/playlist_repository_impl.dart';
 import '../domain/library_controller.dart';
 
 class LibraryScreen extends ConsumerStatefulWidget {
@@ -19,6 +25,7 @@ class LibraryScreen extends ConsumerStatefulWidget {
 
 class _LibraryScreenState extends ConsumerState<LibraryScreen> {
   final _searchCtrl = TextEditingController();
+  final _imagePicker = ImagePicker();
 
   @override
   void dispose() {
@@ -27,23 +34,66 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
   }
 
   Future<void> _showNewPlaylistDialog() async {
-    final name = await showDialog<String>(
+    final result = await showDialog<_PlaylistEditResult>(
       context: context,
       barrierColor: Colors.black38,
-      builder: (_) => const _NewPlaylistDialog(),
+      builder: (_) => _NewPlaylistDialog(
+        onPickCover: _pickPlaylistCover,
+      ),
     );
-    if (name != null && name.isNotEmpty) {
-      ref.read(playlistsProvider.notifier).create(name);
+    if (result != null && result.name.isNotEmpty) {
+      final repo = ref.read(playlistRepositoryProvider);
+      final playlist = await repo.create(result.name);
+      if (result.coverPath != null && result.coverPath!.isNotEmpty) {
+        await repo.update(playlist.copyWith(coverPath: result.coverPath));
+      }
+      ref.invalidate(playlistsProvider);
     }
   }
 
-  Future<void> _showPlaylistsSheet(List<String> names) async {
+  Future<String?> _pickPlaylistCover(ImageSource source) async {
+    final image = await _imagePicker.pickImage(source: source);
+    return image?.path;
+  }
+
+  Future<void> _showPlaylistsSheet(List<Playlist> playlists) async {
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (_) => _PlaylistsSheet(names: names),
+      builder: (_) => _PlaylistsSheet(
+        playlists: playlists,
+        onEdit: _editPlaylist,
+        onDelete: _deletePlaylist,
+      ),
     );
+  }
+
+  Future<void> _editPlaylist(Playlist playlist) async {
+    final result = await showDialog<_PlaylistEditResult>(
+      context: context,
+      barrierColor: Colors.black38,
+      builder: (_) => _NewPlaylistDialog(
+        initialName: playlist.name,
+        initialCoverPath: playlist.coverPath,
+        title: 'Edit Playlist',
+        submitLabel: 'Save',
+        onPickCover: _pickPlaylistCover,
+      ),
+    );
+
+    if (result == null || result.name.isEmpty || !mounted) return;
+
+    await ref.read(playlistsProvider.notifier).updatePlaylist(
+          playlist.copyWith(
+            name: result.name,
+            coverPath: result.coverPath,
+          ),
+        );
+  }
+
+  Future<void> _deletePlaylist(Playlist playlist) async {
+    await ref.read(playlistsProvider.notifier).delete(playlist.id);
   }
 
   Future<void> _showFavoritesSheet(List<_FavoriteSongData> songs) async {
@@ -60,7 +110,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
     final songsAsync = ref.watch(songsProvider);
     final playlistsAsync = ref.watch(playlistsProvider);
     final likedIdsAsync = ref.watch(likedSongIdsProvider);
-    final playlistNames = playlistsAsync.valueOrNull?.map((e) => e.name).toList() ?? [];
+    final playlists = playlistsAsync.valueOrNull ?? const <Playlist>[];
     final allSongs = songsAsync.valueOrNull ?? const [];
     final likedIds = likedIdsAsync.valueOrNull ?? const <String>{};
     final favoriteSongs = allSongs
@@ -88,9 +138,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                       _PlaylistRow(
                         onFavorites: () => _showFavoritesSheet(favoriteSongs),
                         onMore: () => _showPlaylistsSheet(
-                          playlistNames.isEmpty
-                              ? List<String>.generate(12, (_) => 'Playlist name')
-                              : playlistNames,
+                          playlists,
                         ),
                         onNewPlaylist: _showNewPlaylistDialog,
                       ),
@@ -132,6 +180,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                                 if (i > 0) const SizedBox(height: 12),
                                 _SongTile(
                                   title: songs[i].title,
+                                  coverPath: songs[i].coverPath,
                                   onTap: () => _openPlayer(songs[i].id, songs[i].title),
                                 ),
                               ],
@@ -317,14 +366,22 @@ class _PlaylistCard extends StatelessWidget {
 }
 
 // ─── Song tile ───────────────────────────────────────────────────────────────
-
 class _SongTile extends StatelessWidget {
   final String title;
+  final String? coverPath;
   final VoidCallback onTap;
-  const _SongTile({required this.title, required this.onTap});
+
+  const _SongTile({
+    required this.title,
+    required this.coverPath,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
+    final hasCover =
+        coverPath != null && coverPath!.trim().isNotEmpty;
+
     return GestureDetector(
       onTap: onTap,
       child: Container(
@@ -340,7 +397,10 @@ class _SongTile extends StatelessWidget {
               Color(0x664D285E),
             ],
           ),
-          border: Border.all(color: const Color(0x2EFFFFFF), width: 0.6),
+          border: Border.all(
+            color: const Color(0x2EFFFFFF),
+            width: 0.6,
+          ),
           boxShadow: const [
             BoxShadow(
               offset: Offset(0, 10),
@@ -349,33 +409,53 @@ class _SongTile extends StatelessWidget {
             ),
           ],
         ),
-        child: Row(children: [
-          const SizedBox(width: 10),
-          Container(
-            width: 56,
-            height: 56,
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(18),
-              gradient: const LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [
-                  Color(0xFFAE8AD5),
-                  Color(0xFF6B2F96),
-                ],
+        child: Row(
+          children: [
+            const SizedBox(width: 10),
+
+            // COVER
+            Container(
+              width: 56,
+              height: 56,
+              clipBehavior: Clip.antiAlias,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(18),
+                gradient: const LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    Color(0xFFAE8AD5),
+                    Color(0xFF6B2F96),
+                  ],
+                ),
+                border: Border.all(
+                  color: const Color(0x36FFFFFF),
+                  width: 0.6,
+                ),
               ),
-              border: Border.all(color: const Color(0x36FFFFFF), width: 0.6),
+              child: hasCover
+                  ? CachedImageWidget(
+                      imageUrl: coverPath!,
+                      fit: BoxFit.cover,
+                    )
+                  : null,
             ),
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Text(
-              title,
-              style: AppTypography.body.copyWith(color: Colors.white, fontSize: 16),
+
+            const SizedBox(width: 14),
+
+            Expanded(
+              child: Text(
+                title,
+                style: AppTypography.body.copyWith(
+                  color: Colors.white,
+                  fontSize: 16,
+                ),
+              ),
             ),
-          ),
-          const SizedBox(width: 14),
-        ]),
+
+            const SizedBox(width: 14),
+          ],
+        ),
       ),
     );
   }
@@ -384,20 +464,53 @@ class _SongTile extends StatelessWidget {
 // ─── New playlist dialog ─────────────────────────────────────────────────────
 
 class _NewPlaylistDialog extends StatefulWidget {
-  const _NewPlaylistDialog();
+  final String initialName;
+  final String? initialCoverPath;
+  final String title;
+  final String submitLabel;
+  final Future<String?> Function(ImageSource source) onPickCover;
+
+  const _NewPlaylistDialog({
+    required this.onPickCover,
+    this.initialName = '',
+    this.initialCoverPath,
+    this.title = 'New Playlist',
+    this.submitLabel = 'Create',
+  });
+
   @override
   State<_NewPlaylistDialog> createState() => _NewPlaylistDialogState();
 }
 
 class _NewPlaylistDialogState extends State<_NewPlaylistDialog> {
-  final _ctrl = TextEditingController();
+  late final TextEditingController _ctrl;
+  String? _coverPath;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = TextEditingController(text: widget.initialName);
+    _coverPath = widget.initialCoverPath;
+  }
 
   Future<void> _openEditPlaylistPictureDialog() async {
-    await showDialog<String>(
+    final action = await showDialog<String>(
       context: context,
       barrierColor: Colors.black38,
       builder: (_) => const _EditPlaylistPictureDialog(),
     );
+    if (action == null) return;
+
+    if (action == 'Remove Picture') {
+      setState(() => _coverPath = '');
+      return;
+    }
+
+    final source = ImageSource.gallery;
+    final path = await widget.onPickCover(source);
+    if (path == null || !mounted) return;
+
+    setState(() => _coverPath = path);
   }
 
   @override
@@ -432,26 +545,14 @@ class _NewPlaylistDialogState extends State<_NewPlaylistDialog> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text('New Playlist', style: AppTypography.title.copyWith(fontSize: 22)),
+            Text(widget.title, style: AppTypography.title.copyWith(fontSize: 22)),
             const SizedBox(height: 16),
             Stack(
               clipBehavior: Clip.none,
               children: [
-                Container(
-                  width: 140,
-                  height: 140,
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(22),
-                    gradient: const LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      colors: [
-                        Color(0xFF6C6571),
-                        Color(0xFF2C2535),
-                      ],
-                    ),
-                    border: Border.all(color: AppColors.white12, width: 0.6),
-                  ),
+                _PlaylistCoverBox(
+                  size: 140,
+                  coverPath: _coverPath,
                 ),
                 Positioned(
                   right: -10,
@@ -520,13 +621,34 @@ class _NewPlaylistDialogState extends State<_NewPlaylistDialog> {
             Row(children: [
               Expanded(child: _DialogBtn(label: 'Cancel', filled: false, onTap: () => Navigator.of(context).pop())),
               const SizedBox(width: 12),
-              Expanded(child: _DialogBtn(label: 'Create', filled: true, onTap: () => Navigator.of(context).pop(_ctrl.text.trim()))),
+              Expanded(
+                child: _DialogBtn(
+                  label: widget.submitLabel,
+                  filled: true,
+                  onTap: () => Navigator.of(context).pop(
+                    _PlaylistEditResult(
+                      name: _ctrl.text.trim(),
+                      coverPath: _coverPath,
+                    ),
+                  ),
+                ),
+              ),
             ]),
           ],
         ),
       ),
     );
   }
+}
+
+class _PlaylistEditResult {
+  final String name;
+  final String? coverPath;
+
+  const _PlaylistEditResult({
+    required this.name,
+    required this.coverPath,
+  });
 }
 
 class _DialogBtn extends StatelessWidget {
@@ -579,9 +701,15 @@ class _DialogBtn extends StatelessWidget {
 }
 
 class _PlaylistsSheet extends StatelessWidget {
-  final List<String> names;
+  final List<Playlist> playlists;
+  final ValueChanged<Playlist> onEdit;
+  final ValueChanged<Playlist> onDelete;
 
-  const _PlaylistsSheet({required this.names});
+  const _PlaylistsSheet({
+    required this.playlists,
+    required this.onEdit,
+    required this.onDelete,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -620,7 +748,27 @@ class _PlaylistsSheet extends StatelessWidget {
               spacing: 18,
               runSpacing: 18,
               children: [
-                for (final name in names) _PlaylistPreviewTile(label: name),
+                if (playlists.isEmpty)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 24),
+                    child: Text(
+                      'No playlists yet',
+                      style: AppTypography.body.copyWith(color: AppColors.white60),
+                    ),
+                  )
+                else
+                  for (final playlist in playlists)
+                    _PlaylistPreviewTile(
+                      playlist: playlist,
+                      onTap: () {
+                        Navigator.of(context).pop();
+                        onEdit(playlist);
+                      },
+                      onDelete: () {
+                        Navigator.of(context).pop();
+                        onDelete(playlist);
+                      },
+                    ),
               ],
             ),
           ),
@@ -825,54 +973,98 @@ class _FavoriteSongData {
 }
 
 class _PlaylistPreviewTile extends StatelessWidget {
-  final String label;
+  final Playlist playlist;
+  final VoidCallback onTap;
+  final VoidCallback onDelete;
 
-  const _PlaylistPreviewTile({required this.label});
+  const _PlaylistPreviewTile({
+    required this.playlist,
+    required this.onTap,
+    required this.onDelete,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      width: 88,
-      child: Column(
-        children: [
-          Container(
-            width: 88,
-            height: 88,
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(22),
-              gradient: const LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [
-                  Color(0xB9B29BCB),
-                  Color(0x804F3D64),
-                ],
+    return GestureDetector(
+      onTap: onTap,
+      onLongPress: onDelete,
+      child: SizedBox(
+        width: 88,
+        child: Column(
+          children: [
+            _PlaylistCoverBox(size: 88, coverPath: playlist.coverPath),
+            const SizedBox(height: 8),
+            Text(
+              playlist.name,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.center,
+              style: AppTypography.body.copyWith(
+                fontSize: 11,
+                color: Colors.white,
               ),
-              border: Border.all(color: const Color(0x30FFFFFF), width: 0.6),
-              boxShadow: const [
-                BoxShadow(
-                  offset: Offset(0, 10),
-                  blurRadius: 18,
-                  color: Color(0x22000000),
-                ),
-              ],
             ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            label,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            textAlign: TextAlign.center,
-            style: AppTypography.body.copyWith(
-              fontSize: 11,
-              color: Colors.white,
-            ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
+}
+
+class _PlaylistCoverBox extends StatelessWidget {
+  final double size;
+  final String? coverPath;
+
+  const _PlaylistCoverBox({
+    required this.size,
+    this.coverPath,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final path = coverPath?.trim();
+    final hasCover = path != null && path.isNotEmpty;
+
+    return Container(
+      width: size,
+      height: size,
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(size >= 120 ? 22 : 20),
+        gradient: const LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [
+            Color(0xB9B29BCB),
+            Color(0x804F3D64),
+          ],
+        ),
+        border: Border.all(color: const Color(0x30FFFFFF), width: 0.6),
+        boxShadow: const [
+          BoxShadow(
+            offset: Offset(0, 10),
+            blurRadius: 18,
+            color: Color(0x22000000),
+          ),
+        ],
+      ),
+      child: hasCover ? _buildLibraryCover(path) : null,
+    );
+  }
+}
+
+Widget? _buildLibraryCover(String path) {
+  if (!path.startsWith('http')) {
+    return Image.file(
+      File(path),
+      fit: BoxFit.cover,
+    );
+  }
+
+  return CachedImageWidget(
+    imageUrl: path,
+    fit: BoxFit.cover,
+  );
 }
 
 class _EditPlaylistPictureDialog extends StatelessWidget {

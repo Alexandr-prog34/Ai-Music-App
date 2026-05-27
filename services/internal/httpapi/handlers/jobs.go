@@ -81,16 +81,18 @@ func (h *JobsHandler) handleCreateJob(w http.ResponseWriter, r *http.Request) {
 	// domain -> dto
 	resp := view.NewJob(job)
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusCreated)
+	writeJSON(w, http.StatusCreated, resp)
 
-	// не игнорируем encode: логируем ошибку
-	if err := writeJSON(w, resp); err != nil {
-		h.logger.Error(
-			"failed to encode create job response",
-			"err", err,
-			"job_id", job.ID.String(),
-			"device_id", deviceID.String(),
-		)
-	}
+	// w.Header().Set("Content-Type", "application/json")
+	// w.WriteHeader(http.StatusCreated)
+
+	// // не игнорируем encode: логируем ошибку
+	// if err := writeJSON(w, resp); err != nil {
+	// 	h.logger.Error(
+	// 		"failed to encode create job response",
+	// 		"err", err,
+	// 		"job_id", job.ID.String(),
+	// 		"device_id", deviceID.String(),
+	// 	)
+	// }
 }
