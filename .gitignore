@@ -1,2 +1,10 @@
 .idea/
 LOCAL_CONTEXT.md
+
+.env
+**/.DS_Store
+services/worker
+apps/mobile_flutter/flutter
+apps/mobile_flutter/.gradle/
+apps/mobile_flutter/.fvm/
+apps/mobile_flutter/**/ephemeral/
