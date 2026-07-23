@@ -1,353 +1,264 @@
-# Unrolled Linked List
+# AI Music Generator
 
-![C++](https://img.shields.io/badge/C%2B%2B-23-blue.svg)
-![CMake](https://img.shields.io/badge/build-CMake-informational.svg)
-![Tests](https://img.shields.io/badge/tests-GoogleTest-success.svg)
+<p align="center">
+  <strong>A full-stack mobile application for asynchronous AI music generation.</strong>
+</p>
 
-An allocator-aware, STL-style implementation of an **Unrolled Linked List** in modern C++.
+<p align="center">
+  <img src="https://img.shields.io/badge/Go-1.24-00ADD8?logo=go&logoColor=white" alt="Go 1.24">
+  <img src="https://img.shields.io/badge/Flutter-3.x-02569B?logo=flutter&logoColor=white" alt="Flutter 3">
+  <img src="https://img.shields.io/badge/PostgreSQL-16-4169E1?logo=postgresql&logoColor=white" alt="PostgreSQL 16">
+  <img src="https://img.shields.io/badge/Redis-7-DC382D?logo=redis&logoColor=white" alt="Redis 7">
+  <img src="https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker&logoColor=white" alt="Docker Compose">
+</p>
 
-Unlike a classic linked list, where every node stores one element, an unrolled linked list stores several elements inside each node. This reduces per-element allocation overhead and improves data locality while preserving bidirectional traversal and efficient modifications.
+AI Music Generator turns a text prompt or custom lyrics into generated music. The Flutter client submits a generation request, while the Go backend persists the job, processes it asynchronously through Redis, integrates with a Suno-compatible API, stores generated media in MinIO, and sends real-time status updates over WebSockets.
 
-## Features
+> This project integrates with an external music-generation provider. It does not train or host its own ML model.
 
-- Generic container: `unrolled_list<T, NodeMaxSize, Allocator>`
-- Configurable node capacity through the `NodeMaxSize` template parameter
-- Custom allocator support through `std::allocator_traits`
-- Allocator rebinding for node allocation and element lifetime management
-- Bidirectional mutable and const iterators
-- Reverse iterator types and accessors
-- Copy and move construction
-- Copy and move assignment
-- Range, fill, allocator and initializer-list constructors
-- `push_front`, `push_back`, `pop_front` and `pop_back`
-- Single-element and count-based `insert`
-- Single-element and range `erase`
-- `front`, `back`, `size`, `empty`, `clear`, `swap` and `get_allocator`
-- Automatic node splitting when inserting into a full node
-- Support for non-default-constructible element types
-- Google Test test suite
+## Highlights
 
-## Container Design
+- Text-to-music and custom lyrics generation
+- Asynchronous job processing with retries and dead-letter queues
+- Real-time generation updates over WebSockets
+- Persistent jobs and track metadata in PostgreSQL
+- S3-compatible audio and cover storage with MinIO
+- Callback processing with polling fallback
+- Track library, playback, favorites, deletion, and downloads
+- Anonymous device-based MVP sessions
+- Docker Compose environment with Nginx and Swagger UI
+- Layered Go backend with domain, application, ports, and adapters
 
-The container is declared as:
+## Architecture
 
-```cpp
-template<
-    typename T,
-    std::size_t NodeMaxSize = 10,
-    typename Allocator = std::allocator<T>
->
-class unrolled_list;
+```mermaid
+flowchart TD
+    Mobile["Flutter mobile app"]
+    API["Go API"]
+    DB[("PostgreSQL")]
+    Redis[("Redis queues and Pub/Sub")]
+    Worker["Go worker"]
+    Provider["Suno-compatible API"]
+    Storage[("MinIO")]
+
+    Mobile -->|"REST + WebSocket"| API
+    API -->|"Persist jobs and tracks"| DB
+    API -->|"Enqueue jobs and callbacks"| Redis
+    Redis -->|"Consume"| Worker
+    Worker -->|"Generate / poll"| Provider
+    Provider -->|"Callback"| API
+    Worker -->|"Store media"| Storage
+    Worker -->|"Update state"| DB
+    Worker -->|"Publish updates"| Redis
+    Redis -->|"Notify"| API
 ```
 
-Each node contains:
-
-- links to the previous and next nodes;
-- the number of constructed elements;
-- aligned raw storage for up to `NodeMaxSize` objects.
-
-Elements are constructed directly inside node storage through allocator traits. When an insertion targets a full node, the node is split and part of its elements is moved into a newly allocated node.
-
-```text
-head                                                   tail
- ┌───────────────┐     ┌───────────────┐     ┌───────────────┐
- │ 1 │ 2 │ 3 │ 4 │ <-> │ 5 │ 6 │ 7     │ <-> │ 8 │ 9         │
- └───────────────┘     └───────────────┘     └───────────────┘
-       node                  node                  node
-```
-
-## Requirements
-
-- C++23-compatible compiler
-- CMake 3.12 or newer
-- Internet access during the first CMake configuration so GoogleTest can be fetched
-
-## Build
-
-Clone the repository:
-
-```bash
-git clone https://github.com/Alexandr-prog34/UnrolledLinkedList-STL.git
-cd UnrolledLinkedList-STL
-```
-
-Configure and build the project:
-
-```bash
-cmake -S . -B build
-cmake --build build
-```
-
-## Run Tests
-
-The test suite is registered with CTest:
-
-```bash
-ctest --test-dir build --output-on-failure
-```
-
-Alternatively, run the test executable directly:
-
-```bash
-./build/tests/unrolled-list-lib-tests
-```
-
-On multi-configuration generators such as Visual Studio, the executable may be located inside a configuration directory:
-
-```bash
-./build/tests/Debug/unrolled-list-lib-tests
-```
-
-## Usage
-
-Add the `lib` directory to your include path and include the container header:
-
-```cpp
-#include <unrolled_list.h>
-
-#include <iostream>
-#include <iterator>
-
-int main() {
-    unrolled_list<int, 4> values{1, 2, 3};
-
-    values.push_front(0);
-    values.push_back(4);
-
-    auto position = values.begin();
-    std::advance(position, 2);
-    values.insert(position, 42);
-
-    for (const int value : values) {
-        std::cout << value << ' ';
-    }
-}
-```
-
-Output:
-
-```text
-0 1 42 2 3 4
-```
-
-The second template argument controls the maximum number of elements stored in one node:
-
-```cpp
-unrolled_list<int> default_capacity;      // 10 elements per node
-unrolled_list<int, 32> larger_nodes;      // 32 elements per node
-```
-
-A custom allocator can be supplied as the third template argument:
-
-```cpp
-using list_type = unrolled_list<int, 16, CustomAllocator<int>>;
-
-CustomAllocator<int> allocator;
-list_type values(allocator);
-```
-
-## Public API
-
-### Construction and assignment
-
-```cpp
-unrolled_list();
-explicit unrolled_list(const allocator_type& allocator);
-
-unrolled_list(
-    size_type count,
-    const value_type& value,
-    const allocator_type& allocator = allocator_type()
-);
-
-template<typename InputIt>
-unrolled_list(
-    InputIt first,
-    InputIt last,
-    const allocator_type& allocator = allocator_type()
-);
-
-unrolled_list(
-    std::initializer_list<value_type> values,
-    const allocator_type& allocator = allocator_type()
-);
-
-unrolled_list(const unrolled_list& other);
-unrolled_list(unrolled_list&& other) noexcept;
-unrolled_list(unrolled_list&& other, const allocator_type& allocator);
-
-unrolled_list& operator=(const unrolled_list& other);
-unrolled_list& operator=(unrolled_list&& other) noexcept;
-```
-
-### Iterators
-
-```cpp
-iterator begin();
-iterator end();
-
-const_iterator begin() const;
-const_iterator end() const;
-
-const_iterator cbegin() const;
-const_iterator cend() const;
-
-reverse_iterator rbegin();
-reverse_iterator rend();
-
-const_reverse_iterator rbegin() const;
-const_reverse_iterator rend() const;
-
-const_reverse_iterator crbegin() const;
-const_reverse_iterator crend() const;
-```
-
-### Element access
-
-```cpp
-reference front();
-const_reference front() const;
-
-reference back();
-const_reference back() const;
-```
-
-Calling `front()` or `back()` on an empty container is undefined, matching the convention used by standard sequence containers.
-
-### Capacity
-
-```cpp
-bool empty() const;
-size_type size() const;
-size_type max_size() const;
-```
-
-### Modifiers
-
-```cpp
-void clear() noexcept;
-
-void push_back(const value_type& value);
-void push_front(const value_type& value);
-
-void pop_back() noexcept;
-void pop_front() noexcept;
-
-iterator insert(const_iterator position, const value_type& value);
-iterator insert(
-    const_iterator position,
-    size_type count,
-    const value_type& value
-);
-
-iterator erase(const_iterator position) noexcept;
-iterator erase(
-    const_iterator first,
-    const_iterator last
-) noexcept;
-
-void swap(unrolled_list& other) noexcept(
-    std::is_nothrow_swappable_v<value_type>
-);
-```
-
-### Allocator access
-
-```cpp
-allocator_type get_allocator() const;
-```
-
-## Complexity
-
-Let:
-
-- `N` be the total number of elements;
-- `B` be `NodeMaxSize`;
-- `M` be the number of inserted or erased elements.
-
-Because `B` is a compile-time fixed node capacity, operations bounded by `B` are constant with respect to the total container size `N`.
-
-| Operation | Complexity |
-|---|---:|
-| `empty`, `size` | `O(1)` |
-| `front`, `back` | `O(1)` |
-| `begin`, `end` | `O(1)` |
-| Iterator increment/decrement | `O(1)` |
-| `push_back` | `O(1)` |
-| `push_front` | `O(B)`, effectively `O(1)` for fixed `B` |
-| `pop_back` | `O(1)` |
-| `pop_front` | `O(B)`, effectively `O(1)` for fixed `B` |
-| Single-element `insert` | `O(B)`, effectively `O(1)` for fixed `B` |
-| Count-based `insert` | `O(M × B)` |
-| Single-element `erase` | `O(B)`, effectively `O(1)` for fixed `B` |
-| Range `erase` | `O(M × B)` |
-| `clear` | `O(N)` |
-| Equality comparison | `O(N)` |
-
-Finding an arbitrary position is linear because the container provides bidirectional rather than random-access iterators.
-
-## Exception Safety
-
-The project includes dedicated tests with throwing element types and custom allocators.
-
-The tested scenarios include:
-
-- cleanup after an exception during range construction;
-- preserving container invariants when `push_front` fails;
-- preserving container invariants when `push_back` fails;
-- matching node allocation and deallocation counts.
-
-The current API declares `clear`, `pop_front`, `pop_back` and both `erase` overloads as `noexcept`.
-
-## Testing
-
-The Google Test suite covers:
-
-- comparison with `std::list` for mixed push, pop and insert operations;
-- single-element modification and container lifecycle behavior;
-- clearing and reusing a container;
-- custom allocator allocation and deallocation;
-- exception-safety scenarios;
-- support for non-default-constructible types;
-- API checks inspired by the standard named requirements for:
-  - `Container`;
-  - `AllocatorAwareContainer`;
-  - `SequenceContainer`;
-  - `ReversibleContainer`.
-
-GoogleTest and GoogleMock are downloaded automatically through CMake `FetchContent`.
-
-## Project Structure
+### Generation flow
+
+1. The Flutter app creates a job through `POST /jobs`.
+2. The API validates the request, creates an anonymous user when necessary, persists the job, and publishes it to Redis.
+3. The worker consumes the job and starts generation through the external provider.
+4. Completion is detected through a callback or polling fallback.
+5. Generated audio and optional cover artwork are downloaded into MinIO.
+6. Track metadata and the final job state are stored in PostgreSQL.
+7. Redis Pub/Sub triggers a WebSocket update for the requesting client.
+8. The app opens the generated track in the player.
+
+## Technology stack
+
+| Area | Technologies |
+|---|---|
+| Mobile client | Flutter, Dart, Riverpod, GoRouter, Dio, Audioplayers |
+| Backend | Go 1.24, `net/http`, Gorilla WebSocket |
+| Database | PostgreSQL 16, SQL migrations, Squirrel, sqlx |
+| Messaging | Redis Lists, processing queues, retries, DLQ, Pub/Sub |
+| Object storage | MinIO / S3-compatible storage |
+| AI integration | Suno-compatible generation API, callbacks, polling |
+| Infrastructure | Docker Compose, Nginx, Swagger UI |
+| Testing | Go unit and handler tests, Flutter widget tests |
+
+## Repository structure
 
 ```text
 .
-├── bin
-│   ├── CMakeLists.txt
-│   └── main.cpp
-├── lib
-│   └── unrolled_list.h
-├── tests
-│   ├── CMakeLists.txt
-│   ├── allocator_ut.cpp
-│   ├── exception_safety_ut.cpp
-│   ├── named_requirements_ut.cpp
-│   ├── no_default_constructible_ut.cpp
-│   └── simple_ut.cpp
-├── CMakeLists.txt
-└── README.md
+├── apps/
+│   └── mobile_flutter/        # Flutter application
+├── services/
+│   ├── cmd/
+│   │   ├── api/               # HTTP and WebSocket server
+│   │   └── worker/            # Background consumers
+│   ├── internal/
+│   │   ├── domain/            # Entities and business rules
+│   │   ├── httpapi/           # HTTP handlers and DTOs
+│   │   ├── ports/             # Application interfaces
+│   │   ├── queue/             # Redis queue adapters
+│   │   ├── realtime/          # WebSocket hub and subscriber
+│   │   ├── repo/postgres/     # PostgreSQL repositories
+│   │   ├── service/           # Application services
+│   │   ├── storage/           # MinIO adapter
+│   │   ├── suno/              # Generation API client
+│   │   └── worker/            # Job and callback processors
+│   └── migrations/            # PostgreSQL migrations
+├── docs/                      # OpenAPI and architecture documentation
+├── infra/                     # Docker Compose and Dockerfiles
+├── nginx/                     # Reverse proxy configuration
+└── scripts/                   # Smoke checks
 ```
 
-## Motivation
+## Getting started
 
-This project explores lower-level C++ container implementation techniques:
+### Prerequisites
 
-- manual object lifetime management;
-- aligned raw storage;
-- allocator-aware design;
-- iterator implementation;
-- copy and move semantics;
-- exception safety;
-- node-based data structures;
-- compile-time interface validation with concepts.
+- Docker and Docker Compose
+- Flutter SDK for running the mobile client
+- A provider API key for real music generation
 
-It is intended as an educational implementation of an STL-style sequence container and as a practical study of modern C++ memory-management mechanisms.
+### 1. Configure the environment
+
+```bash
+cp .env.example .env
+```
+
+The main variables are:
+
+| Variable | Purpose |
+|---|---|
+| `POSTGRES_DSN` | PostgreSQL connection string |
+| `REDIS_ADDR` | Redis server address |
+| `S3_ENDPOINT` | Internal MinIO/S3 endpoint |
+| `S3_PUBLIC_ENDPOINT` | Endpoint accessible to the client |
+| `S3_ACCESS_KEY` / `S3_SECRET_KEY` | Object-storage credentials |
+| `SUNO_MODE` | `dev` or provider-backed mode |
+| `SUNO_API_KEY` | External generation API key |
+| `SUNO_CALLBACK_URL` | Public callback URL or local fallback URL |
+| `SUNO_POLL_FALLBACK` | Enables polling when callbacks are unavailable |
+| `SUNO_CALLBACK_SECRET` | Protects the callback endpoint |
+
+Never commit the local `.env` file.
+
+### 2. Start the backend
+
+From the repository root:
+
+```bash
+docker compose -f infra/docker-compose.yml up --build
+```
+
+The database migrations run automatically.
+
+| Service | Local address |
+|---|---|
+| API | `http://localhost:8080` |
+| Nginx | `http://localhost:8088` |
+| Swagger UI | `http://localhost:8081` |
+| MinIO API | `http://localhost:9000` |
+| MinIO Console | `http://localhost:9001` |
+
+Check the service:
+
+```bash
+curl http://localhost:8080/health
+curl http://localhost:8080/ready
+```
+
+### 3. Run the Flutter application
+
+```bash
+cd apps/mobile_flutter
+flutter pub get
+flutter run
+```
+
+The current local defaults target an Android emulator. For a physical device or another platform, configure API, WebSocket, and public object-storage hosts that are reachable from that device.
+
+## API overview
+
+Every user-facing request uses an anonymous installation identifier:
+
+```http
+X-Device-Id: <uuid>
+```
+
+| Method | Endpoint | Description |
+|---|---|---|
+| `GET` | `/health` | Liveness check |
+| `GET` | `/ready` | PostgreSQL and Redis readiness |
+| `POST` | `/jobs` | Create a generation job |
+| `GET` | `/jobs` | List the current user's jobs |
+| `GET` | `/jobs/{id}` | Get a job and its generated tracks |
+| `GET` | `/tracks` | List generated tracks |
+| `GET` | `/tracks/{id}` | Get track metadata |
+| `DELETE` | `/tracks/{id}` | Delete a track |
+| `PUT` | `/tracks/{id}/favorite` | Add a track to favorites |
+| `DELETE` | `/tracks/{id}/favorite` | Remove a track from favorites |
+| `GET` | `/tracks/{id}/download` | Get a temporary download URL |
+| `GET` | `/ws` | Subscribe to real-time updates |
+| `POST` | `/suno/callback` | Receive provider callbacks |
+
+The complete contract is available in [`docs/openapi1.yml`](docs/openapi1.yml).
+
+### Example request
+
+```bash
+curl -X POST http://localhost:8080/jobs \
+  -H "Content-Type: application/json" \
+  -H "X-Device-Id: 11111111-1111-1111-1111-111111111111" \
+  -d '{
+    "prompt": "Atmospheric electronic track for a night drive",
+    "instrumental": true,
+    "model": "V4_5ALL"
+  }'
+```
+
+## Testing
+
+### Go
+
+```bash
+cd services
+gofmt -w .
+go test ./...
+go vet ./...
+```
+
+### Flutter
+
+```bash
+cd apps/mobile_flutter
+dart format .
+flutter analyze
+flutter test
+```
+
+### Smoke checks
+
+With the Docker environment running:
+
+```bash
+bash scripts/smoke_api.sh
+```
+
+## Current status
+
+The repository contains an end-to-end MVP: mobile request creation, asynchronous generation, persistent jobs, media ingestion, real-time updates, and track playback.
+
+Current limitations:
+
+- Playlists are stored locally and are not synchronized with the backend.
+- Local networking defaults are optimized for an Android emulator.
+- Anonymous `X-Device-Id` sessions are suitable for an MVP, not strong authentication.
+- Real generation depends on the configured third-party provider.
+
+## Roadmap
+
+- Persistent playlists
+- Configurable mobile environments
+- Account authentication and cross-device libraries
+- Recovery of in-flight polling after worker restarts
+- Additional integration and end-to-end tests
+- CI/CD pipelines
+- Production deployment configuration
+
+## Contributors
+
+This project was built collaboratively. See the full list of [contributors](https://github.com/Alexandr-prog34/Ai-Music-App/graphs/contributors).
